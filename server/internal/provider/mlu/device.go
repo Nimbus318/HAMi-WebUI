@@ -27,7 +27,8 @@ const (
 	CambriconDeviceCoreAnnos   = "cambricon.com/mlu370.smlu.vcore"
 	CambriconDeviceMemAnnos    = "cambricon.com/mlu370.smlu.vmemory"
 	CambriconDeviceRealCount   = "cambricon.com/real-mlu-counts"
-	CambriconMemUnit           = 1024
+	// HAMi MemoryFactor: one native sMLU vmemory unit is 256 MiB.
+	CambriconMemUnit = 256
 )
 
 func init() {
