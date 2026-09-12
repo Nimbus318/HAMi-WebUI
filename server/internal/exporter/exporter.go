@@ -338,6 +338,9 @@ func (s *MetricsGenerator) GenerateDeviceMetrics(ctx context.Context) error {
 			driver = deviceAdditional.DriverVersion
 			deviceNo = deviceAdditional.DeviceNo
 		}
+		if provider == biz.MthreadsGPUDevice {
+			driver, deviceNo = device.Driver, fmt.Sprintf("mtgpu%d", device.Index)
+		}
 
 		// HAMi does not schedule unconfigured devices, so they add no schedulable capacity.
 		if !device.Unconfigured {
@@ -346,6 +349,10 @@ func (s *MetricsGenerator) GenerateDeviceMetrics(ctx context.Context) error {
 			s.set(HamiVcoreSize, float64(device.Devcore), device.NodeName, provider, device.Type, device.Id, driver, deviceNo)
 			s.set(HamiVCoreScaling, float64(device.Devcore)/100, device.NodeName, provider, device.Type, device.Id, driver, deviceNo)
 			s.set(HamiCoreSize, float64(biz.PhysicalCoreBaselinePerDevice), device.NodeName, provider, device.Type, device.Id, driver, deviceNo)
+		}
+		if provider == biz.MthreadsGPUDevice {
+			s.generateMthreadsDeviceMetrics(ctx, device, driver, deviceNo)
+			continue
 		}
 		deviceMemUsed, memoryUsedErr := s.deviceMemUsed(ctx, provider, device.Id)
 		if memoryUsedErr == nil {
@@ -512,6 +519,9 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 			var provider string = ""
 			coreAllocationKnown := true
 			for _, cd := range c.ContainerDevices {
+				if device.Provider == biz.MthreadsGPUDevice && cd.UUID != device.AliasId {
+					continue
+				}
 				if device.AliasId != "" && !strings.HasPrefix(cd.UUID, device.AliasId) {
 					continue
 				}
@@ -691,7 +701,7 @@ func (s *MetricsGenerator) taskCoreUsed(ctx context.Context, provider, namespace
 		query = nvidiaTaskCoreUsedQuery(deviceUUID, namespace, pod, container)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_utilization * on(uuid) group_right mlu_container{namespace=\"%s\",pod=\"%s\",container=\"%s\",type=\"mlu370.smlu.vcore\"})", namespace, pod, container)
-	case biz.AscendGPUDevice:
+	case biz.AscendGPUDevice, biz.MthreadsGPUDevice:
 		return 0, errWorkloadTelemetryUnsupported
 	case biz.HygonGPUDevice:
 		query = fmt.Sprintf("avg(vdcu_percent{pod_uuid=\"%s\", container_name=\"%s\"})", podUUID, container)
@@ -795,7 +805,7 @@ func (s *MetricsGenerator) taskMemoryUsed(ctx context.Context, provider, namespa
 		query = fmt.Sprintf("avg(hami_vgpu_memory_used_bytes{device_uuid=\"%s\", namespace=\"%s\", pod=\"%s\", container=\"%s\"})", deviceUUID, namespace, pod, container)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_utilization * on(uuid) group_right mlu_container{namespace=\"%s\",pod=\"%s\",container=\"%s\",type=\"mlu370.smlu.vmemory\"})", namespace, pod, container)
-	case biz.AscendGPUDevice:
+	case biz.AscendGPUDevice, biz.MthreadsGPUDevice:
 		return 0, errWorkloadTelemetryUnsupported
 	case biz.HygonGPUDevice:
 		query = fmt.Sprintf("avg(vdcu_usage_memory_size{pod_uuid=\"%s\", container_name=\"%s\"})", podUUID, container)
