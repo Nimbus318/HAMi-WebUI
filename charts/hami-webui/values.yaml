@@ -9,6 +9,7 @@ vendorNodeSelectors:
   Ascend: ascend=on
   DCU: dcu=on
   HCU: hcu=on
+  Mthreads: mthreads.com/gpu-node=true
   MLU: mlu=on
   Metax: metax-tech.com/gpu.installed=true
 
