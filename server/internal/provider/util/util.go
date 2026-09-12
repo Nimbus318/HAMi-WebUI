@@ -180,34 +180,23 @@ func DecodeDCUContainerDevices(str, priority, nodeName string) (ContainerDevices
 	return contdev, nil
 }
 
-// DecodeMLUContainerDevices decodes the mlu container devices from a string.
-func DecodeMLUContainerDevices(str, nodeName string) (ContainerDevices, error) {
-	if len(str) == 0 {
-		return ContainerDevices{}, nil
+// DecodeMLUContainerDevices consumes HAMi's native slot_core_memoryUnits
+// profile. Runtime PROFILE_INSTANCE is a separate four-field Device Plugin
+// result; waiting for it is unnecessary for reading the scheduler reservation.
+func DecodeMLUContainerDevices(profile, nodeName string) (ContainerDevices, error) {
+	fields := strings.Split(profile, "_")
+	if len(fields) != 3 || nodeName == "" {
+		return nil, fmt.Errorf("invalid MLU slot_core_memory profile %q", profile)
 	}
-	contdev := ContainerDevices{}
-	tmpdev := ContainerDevice{}
-	if strings.Contains(str, "_") {
-		//fmt.Println("cd is ", val)
-		tmpstr := strings.Split(str, "_")
-		if len(tmpstr) < 3 {
-			return ContainerDevices{}, fmt.Errorf("pod annotation format error; information missing, please do not use nodeName field in task")
-		}
-		tmpdev.Type = "MLU"
-		devcores, _ := strconv.ParseInt(tmpstr[1], 10, 32)
-		devmem, _ := strconv.ParseInt(tmpstr[2], 10, 32)
-		tmpdev.Usedmem = int32(devmem) * 1024
-		index, _ := strconv.ParseInt(tmpstr[5], 10, 32)
-		tmpdev.Idx = int(index)
-		tmpdev.UUID = fmt.Sprintf("%s-cambricon-mlu-%d", nodeName, index)
-		if devcores == 0 {
-			tmpdev.Usedcores = 100
-		} else {
-			tmpdev.Usedcores = int32(devcores)
-		}
-		contdev = append(contdev, tmpdev)
+	slot, slotErr := strconv.ParseInt(fields[0], 10, 32)
+	cores, coreErr := strconv.ParseInt(fields[1], 10, 32)
+	memory, memoryErr := strconv.ParseInt(fields[2], 10, 32)
+	if slotErr != nil || coreErr != nil || memoryErr != nil || slot < 0 || cores < 0 || cores > 100 || memory < 0 || memory > (1<<31-1)/256 {
+		return nil, fmt.Errorf("invalid MLU profile quantities in %q", profile)
 	}
-	return contdev, nil
+	return ContainerDevices{{Idx: int(slot), Type: CambriconGPUDevice,
+		UUID:    fmt.Sprintf("%s-cambricon-mlu-%d", nodeName, slot),
+		Usedmem: int32(memory * 256), Usedcores: int32(cores)}}, nil
 }
 
 func DecodeMetaxContainerDevices(str string) (ContainerDevices, error) {
@@ -293,10 +282,9 @@ func DecodePodDevices(pod *corev1.Pod, log *log.Helper) (PodDevices, error) {
 		pd[devType] = make(PodSingleDevice, 0)
 		switch VendorOf(devType) {
 		case CambriconGPUDevice:
-			instance := annos[DsmluProfileAndInstance]
-			cd, err := DecodeMLUContainerDevices(fmt.Sprintf("%s_%s", str, instance), nodeName)
+			cd, err := DecodeMLUContainerDevices(str, nodeName)
 			if err != nil {
-				return PodDevices{}, nil
+				return PodDevices{}, err
 			}
 			if len(cd) == 0 {
 				continue
