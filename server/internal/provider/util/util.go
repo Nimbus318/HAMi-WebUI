@@ -27,6 +27,7 @@ const (
 	CambriconGPUDevice  = "MLU"
 	MetaxGPUDevice      = "Metax-GPU"
 	MetaxSGPUDevice     = "Metax-SGPU"
+	MthreadsGPUDevice   = "Mthreads"
 
 	DsmluProfileAndInstance = "CAMBRICON_DSMLU_PROFILE_INSTANCE"
 
@@ -442,6 +443,17 @@ func DecodePodDevices(pod *corev1.Pod, log *log.Helper, ascendMode AscendAllocat
 					return PodDevices{}, nil
 				}
 				pd[devType] = append(pd[devType], cd)
+			}
+		case MthreadsGPUDevice:
+			for i, segment := range strings.Split(str, OnePodMultiContainerSplitSymbol) {
+				if i >= podContainerCount(pod) {
+					break
+				}
+				devices, err := DecodeMthreadsContainerDevices(segment, priorities[i])
+				if err != nil {
+					return PodDevices{}, err
+				}
+				pd[devType] = append(pd[devType], devices)
 			}
 		case HygonGPUDevice:
 			for i, s := range strings.Split(str, OnePodMultiContainerSplitSymbol) {
