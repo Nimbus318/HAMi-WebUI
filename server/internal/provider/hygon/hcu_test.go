@@ -98,7 +98,9 @@ func TestLegacyDCUInventoryAndAllocationStillUseMinorNumberAlias(t *testing.T) {
 			t.Errorf("legacy inventory query = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"node":"legacy-dcu-node","minor_number":"3","device_id":"legacy-serial"},"value":[1,"42"]}]}}`)
+		if _, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"node":"legacy-dcu-node","minor_number":"3","device_id":"legacy-serial"},"value":[1,"42"]}]}}`); err != nil {
+			t.Errorf("write Prometheus response: %v", err)
+		}
 	}))
 	defer promServer.Close()
 	client, err := prom.NewClient(promServer.URL, time.Second, prom.HTTPConfig{}, log.DefaultLogger)
