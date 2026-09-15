@@ -32,6 +32,7 @@
               <div class="basic-info-title">
                 <svg-icon v-if="gpuTypeIcon && detail.type" :icon="gpuTypeIcon" class="gpu-type-icon" />
                 {{ detail.type || '--' }}
+                <UnconfiguredTag v-if="detail.unconfigured" />
               </div>
               <div class="basic-info-subtitle">{{ $t('card.model') }}</div>
             </div>
@@ -50,6 +51,28 @@
           </div>
         </div>
       </div>
+    </block-box>
+
+    <block-box v-if="npuSpecVisible" class="npu-spec-block" :title="$t('card.deviceConfig.title')">
+      <p v-if="deviceConfigStateText" class="npu-spec-note">{{ deviceConfigStateText }}</p>
+      <template v-else>
+        <div class="npu-spec-facts">
+          <div v-for="fact in ascendModelFacts" :key="fact.key" class="npu-spec-fact">
+            <div class="npu-spec-fact-value">{{ fact.value }}</div>
+            <div class="npu-spec-fact-label">{{ fact.label }}</div>
+          </div>
+        </div>
+        <div class="npu-spec-subtitle">{{ $t('card.deviceConfig.templates') }}</div>
+        <t-table
+          v-if="ascendModel.templates.length"
+          row-key="name"
+          size="small"
+          :data="ascendModel.templates"
+          :columns="ascendTemplateColumns"
+        />
+        <p v-else class="npu-spec-note">{{ $t('card.deviceConfig.noTemplates') }}</p>
+        <p class="npu-spec-source">{{ deviceConfigSourceText }}</p>
+      </template>
     </block-box>
 
     <block-box class="resource-overview-block" :title="$t('card.detail.resourceOverview')">
@@ -328,6 +351,9 @@ import {
 import { renderPromQLTemplate } from '~/vgpu/metrics/promql-template.mjs';
 import { buildNodeDetailLocation } from '~/vgpu/views/node/detail-location.mjs';
 import { formatOptionalTelemetry } from './optional-telemetry-display.mjs';
+import UnconfiguredTag from './components/UnconfiguredTag.vue';
+import deviceConfigApi from '~/vgpu/api/deviceConfig';
+import { findAscendModel, getDeviceConfigStateKey } from './device-config-display.mjs';
 
 const route = useRoute();
 const { t } = useI18n();
@@ -397,6 +423,45 @@ const headerStatusDisplay = computed(() =>
     ? getCardStatusDisplay(detail.value || {})
     : { icon: '', text: '' },
 );
+
+const deviceConfig = ref({ state: 'loading' });
+deviceConfigApi.getDeviceConfig()
+  .then((reply) => { deviceConfig.value = reply || { state: 'error' }; })
+  .catch(() => { deviceConfig.value = { state: 'error' }; });
+const ascendModel = computed(() => findAscendModel(deviceConfig.value, detail.value?.type));
+// Unlisted Ascend* models are still recognised, as on the server.
+const npuSpecVisible = computed(() => isDetailReady.value && Boolean(
+  ascendModel.value || (deviceConfig.value.state !== 'loaded' && detail.value?.type?.startsWith('Ascend')),
+));
+const deviceConfigParams = computed(() => ({
+  namespace: deviceConfig.value.namespace || '--',
+  name: deviceConfig.value.name || '--',
+}));
+const deviceConfigStateText = computed(() => {
+  const key = getDeviceConfigStateKey(deviceConfig.value);
+  return key ? t(key, deviceConfigParams.value) : '';
+});
+const deviceConfigSourceText = computed(() => t('card.deviceConfig.source', deviceConfigParams.value));
+const formatGiB = (mib) => (mib === undefined ? '--' : `${roundToDecimal(mib / 1024, 2)} GiB`);
+const ascendModelFacts = computed(() => {
+  const model = ascendModel.value;
+  if (!model) return [];
+  return [
+    { key: 'aiCore', label: t('card.deviceConfig.aiCore'), value: model.aiCore ?? '--' },
+    { key: 'aiCpu', label: t('card.deviceConfig.aiCpu'), value: model.aiCpu ?? '--' },
+    { key: 'memory', label: t('card.deviceConfig.memoryAllocatable'), value: formatGiB(model.memoryAllocatableMiB) },
+  ];
+});
+const ascendTemplateColumns = computed(() => [
+  { colKey: 'name', title: t('card.deviceConfig.template'), ellipsis: true },
+  { colKey: 'memoryMiB', title: t('card.deviceConfig.memory'), cell: (_h, { row }) => formatGiB(row.memoryMiB) },
+  { colKey: 'aiCore', title: t('card.deviceConfig.aiCore'), cell: (_h, { row }) => row.aiCore ?? '--' },
+  {
+    colKey: 'computeShare',
+    title: t('card.deviceConfig.computeShare'),
+    cell: (_h, { row }) => (row.computeShare === undefined ? '--' : `${row.computeShare}%`),
+  },
+]);
 
 const end = new Date();
 const start = new Date();
@@ -1025,5 +1090,57 @@ watch([times, detailCardUuid], fetchLineData, { immediate: true });
 .resource-overview-block {
   margin-bottom: 24px;
   box-shadow: none;
+}
+
+.npu-spec-block {
+  margin-bottom: 16px;
+  box-shadow: none;
+}
+
+.npu-spec-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+.npu-spec-fact {
+  flex: 1;
+  min-width: 140px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  background: #f5f7fa;
+}
+
+.npu-spec-fact-value {
+  color: #324558;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 28px;
+}
+
+.npu-spec-fact-label,
+.npu-spec-source {
+  color: #939ea9;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.npu-spec-subtitle {
+  margin-bottom: 8px;
+  color: #1d2b3a;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.npu-spec-note {
+  margin: 0;
+  color: #5f6b7a;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.npu-spec-source {
+  margin: 8px 0 0;
 }
 </style>

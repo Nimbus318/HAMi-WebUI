@@ -114,6 +114,8 @@ import { createRequestState, isLatestRequest, rejectRequest, REQUEST_STATUS, res
 import SchedulingDrawer from './SchedulingDrawer.vue';
 import SegmentedControl from '@/components/SegmentedControl/index.vue';
 import { getWorkloadRequestTotals } from './scheduling-display.mjs';
+import { getCoresUnknownReasonKey } from './allocation-display.mjs';
+import MetricHelp from '~/vgpu/components/MetricHelp.vue';
 
 const props = defineProps(['hideTitle', 'filters', 'style']);
 const { t, locale } = useI18n();
@@ -253,8 +255,10 @@ const baseColumns = computed(() => [
   {
     title: t('task.resourceConfiguration'),
     dataIndex: 'deviceIds',
-    render: ({ deviceIds, allocatedCores, allocatedCoresKnown, allocatedMem, request: resourceRequest }) => {
+    render: (row) => {
+      const { deviceIds, allocatedCores, allocatedCoresKnown, allocatedMem, request: resourceRequest } = row;
       const ids = Array.isArray(deviceIds) ? deviceIds : [];
+      const coresReasonKey = resourceRequest ? '' : getCoresUnknownReasonKey(row);
       const totals = resourceRequest ? getWorkloadRequestTotals(resourceRequest) : {
         count: ids.length || null,
         cores: allocatedCoresKnown !== false ? allocatedCores : null,
@@ -272,7 +276,12 @@ const baseColumns = computed(() => [
           </span>
           <span class="task-gpu-cell-info">
             <span>{gpuCount}</span>
-            <span class="task-gpu-cell-segment">{cores}</span>
+            <span class="task-gpu-cell-segment">
+              {cores}
+              {coresReasonKey ? (
+                <MetricHelp description={t(coresReasonKey)} helpLabel={t('task.allocation.reasonLabel')} />
+              ) : null}
+            </span>
             <span class="task-gpu-cell-segment">{memoryGiB}</span>
           </span>
         </div>
@@ -696,6 +705,9 @@ watch(() => route.query, (query) => {
 }
 
 :deep(.task-gpu-cell-segment) {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   margin-left: 8px;
   padding-left: 8px;
   border-left: 1px solid #d5dee7;

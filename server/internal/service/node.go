@@ -121,6 +121,9 @@ func (s *NodeService) buildNodeReply(node *biz.Node, containers []*biz.Container
 
 	for _, device := range node.Devices {
 		nodeReply.Type = append(nodeReply.Type, device.Type)
+		if device.Unconfigured {
+			continue
+		}
 		nodeReply.VgpuTotal += device.Count
 		nodeReply.CoreTotal += biz.PhysicalCoreBaselinePerDevice
 		nodeReply.MemoryTotal += device.Devmem

@@ -110,6 +110,10 @@
               <span class="summary-item-label">{{ $t('task.createTime') }}</span>
               <span class="summary-item-value">{{ basicCreateTime }}</span>
             </div>
+            <div v-if="allocationShapeText" class="summary-item">
+              <span class="summary-item-label">{{ $t('task.allocation.label') }}</span>
+              <span class="summary-item-value">{{ allocationShapeText }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -132,7 +136,14 @@
           <div class="row-card-content-icon"><svg-icon icon="vgpu-core" /></div>
           <div class="row-card-content-info">
             <div class="row-card-title">{{ resourceOverviewTexts.computeLimit }}</div>
-            <div class="row-card-sub-title">{{ $t('task.computePowerLimit') }}</div>
+            <div class="row-card-sub-title">
+              {{ $t('task.computePowerLimit') }}
+              <MetricHelp
+                v-if="coresUnknownReason"
+                :description="coresUnknownReason"
+                :help-label="$t('task.allocation.reasonLabel')"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -241,6 +252,8 @@ import {
   readReadyMetricField,
 } from '~/vgpu/hooks/instant-vector-state.mjs';
 import DetailPageState from '~/vgpu/components/DetailPageState.vue';
+import MetricHelp from '~/vgpu/components/MetricHelp.vue';
+import { getAllocationShapeCopy, getCoresUnknownReasonKey } from './allocation-display.mjs';
 import {
   GPU_UUID_TOOLTIP_STYLE,
   LONG_TEXT_TOOLTIP_STYLE,
@@ -311,6 +324,14 @@ const gpuModelList = computed(() => {
     grouped.set(model, (grouped.get(model) || 0) + 1);
   });
   return Array.from(grouped.entries()).map(([model, count]) => ({ model, count }));
+});
+const allocationShapeText = computed(() => {
+  const copy = detailStatus.value === REQUEST_STATUS.READY ? getAllocationShapeCopy(detail.value) : undefined;
+  return copy ? t(copy.key, copy.params) : '';
+});
+const coresUnknownReason = computed(() => {
+  const key = detailStatus.value === REQUEST_STATUS.READY ? getCoresUnknownReasonKey(detail.value) : '';
+  return key ? t(key) : '';
 });
 const relatedGpuCountText = computed(() => t('task.relatedGpuCards', { count: safeDeviceIds.value.length }));
 const relatedGpuTableData = computed(() => safeDeviceIds.value.map((uuid) => ({
@@ -836,6 +857,9 @@ watch(
   }
 
   .row-card-sub-title {
+    display: flex;
+    align-items: center;
+    gap: 2px;
     color: #939ea9;
     font-size: 12px;
     line-height: 20px;

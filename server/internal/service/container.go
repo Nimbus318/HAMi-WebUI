@@ -160,7 +160,7 @@ func (s *ContainerService) GetAllContainers(ctx context.Context, req *pb.GetAllC
 
 			containerReply.DeviceIds = append(containerReply.DeviceIds, deviceID)
 			containerReply.AllocatedCores = containerReply.AllocatedCores + containerDevice.Usedcores
-			if strings.HasPrefix(containerDevice.Type, biz.AscendGPUDevice) && !containerDevice.CoreAllocationKnown {
+			if containerDevice.CoreAllocationUnknown {
 				allocatedCoresKnown = false
 			}
 			containerReply.AllocatedMem = containerReply.AllocatedMem + containerDevice.Usedmem
@@ -171,6 +171,7 @@ func (s *ContainerService) GetAllContainers(ctx context.Context, req *pb.GetAllC
 			continue
 		}
 		containerReply.AllocatedCoresKnown = &allocatedCoresKnown
+		containerReply.AllocationShape, containerReply.Template, containerReply.AllocatedCoresReason = describeAllocation(container.ContainerDevices)
 		containerReply.CreateTime = container.CreateTime.Format(time.RFC3339)
 		res.Items = append(res.Items, containerReply)
 	}
@@ -235,7 +236,7 @@ func (s *ContainerService) GetContainer(ctx context.Context, req *pb.GetContaine
 			ctrReply.DeviceIds = append(ctrReply.DeviceIds, device.Id)
 		}
 		ctrReply.AllocatedCores = ctrReply.AllocatedCores + containerDevice.Usedcores
-		if strings.HasPrefix(containerDevice.Type, biz.AscendGPUDevice) && !containerDevice.CoreAllocationKnown {
+		if containerDevice.CoreAllocationUnknown {
 			allocatedCoresKnown = false
 		}
 		ctrReply.AllocatedMem = ctrReply.AllocatedMem + containerDevice.Usedmem
@@ -243,6 +244,26 @@ func (s *ContainerService) GetContainer(ctx context.Context, req *pb.GetContaine
 		ctrReply.AllocatedDevices++
 	}
 	ctrReply.AllocatedCoresKnown = &allocatedCoresKnown
+	ctrReply.AllocationShape, ctrReply.Template, ctrReply.AllocatedCoresReason = describeAllocation(container.ContainerDevices)
 	ctrReply.CreateTime = container.CreateTime.Format(time.RFC3339)
 	return ctrReply, nil
+}
+
+// describeAllocation reports a shape only when every device agrees.
+func describeAllocation(devices biz.ContainerDevices) (shape, template, reason string) {
+	for i, device := range devices {
+		if i == 0 {
+			shape, template = device.Shape, device.Template
+		}
+		if device.Shape != shape {
+			shape = ""
+		}
+		if device.Template != template {
+			template = ""
+		}
+		if reason == "" && device.CoreAllocationUnknown {
+			reason = device.CoreReason
+		}
+	}
+	return shape, template, reason
 }

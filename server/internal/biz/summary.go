@@ -52,6 +52,9 @@ func (t *SummaryUseCase) GetGPUSummary(ctx context.Context, deviceId string, nod
 		if deviceId != "" && deviceId != device.Id {
 			continue
 		}
+		if device.Unconfigured {
+			continue
+		}
 		res.CoreTotal += PhysicalCoreBaselinePerDevice
 		res.MemoryTotal = res.MemoryTotal + device.Devmem
 		res.VgpuTotal = res.VgpuTotal + device.Count
