@@ -100,6 +100,7 @@ import useLocalPagination from '~/vgpu/hooks/useLocalPagination';
 import { getAllocationPercent } from './allocation-percent.mjs';
 import UnconfiguredTag from './components/UnconfiguredTag.vue';
 import { deviceWording } from '~/vgpu/components/device-copy.mjs';
+import { getSplitModeKey } from '~/vgpu/components/split-mode.mjs';
 import useFetchList from '@/hooks/useFetchList';
 
 const props = defineProps(['hideTitle', 'filters']);
@@ -245,6 +246,15 @@ const baseColumns = computed(() => [
           {unconfigured ? <UnconfiguredTag /> : null}
         </span>
       );
+    },
+  },
+  {
+    title: t('card.splitMode.label'),
+    dataIndex: 'mode',
+    width: 190,
+    render: ({ mode }) => {
+      const key = getSplitModeKey(mode);
+      return <span>{key ? t(key) : '--'}</span>;
     },
   },
   {

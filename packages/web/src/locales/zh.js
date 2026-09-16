@@ -309,6 +309,12 @@ export default {
     hardwareError: '硬件错误',
     unmanaged: '未纳管',
     unconfigured: '未配置',
+    splitMode: {
+      label: '切分模式',
+      'hami-core': '软切分（hami-core）',
+      mig: 'MIG',
+      template: '模板切分',
+    },
     unconfiguredTip: 'HAMi 设备配置中没有该型号，调度器不会把它分配给新的工作负载，也不计入可分配容量。',
     deviceConfig: {
       title: 'NPU 规格',
@@ -448,6 +454,8 @@ export default {
         whole: '整卡',
         template: '模板切分',
         templateNamed: '模板 {template}',
+        mig: 'MIG',
+        migNamed: 'MIG {template}',
         soft: '软切分（hami-core）',
         unknown: '无法确定',
       },

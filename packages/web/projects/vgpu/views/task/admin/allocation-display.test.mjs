@@ -21,7 +21,12 @@ test('allocation shapes name the applied template', () => {
   assert.equal(getAllocationShapeCopy({ allocationShape: 'whole' }).key, 'task.allocation.shape.whole');
   assert.equal(getAllocationShapeCopy({ allocationShape: 'soft' }).key, 'task.allocation.shape.soft');
   assert.equal(getAllocationShapeCopy({ allocationShape: 'unknown' }).key, 'task.allocation.shape.unknown');
-  for (const row of [{}, { allocationShape: '' }, { allocationShape: 'mig' }, undefined]) {
+  assert.deepEqual(getAllocationShapeCopy({ allocationShape: 'mig', template: '3g.40gb' }), {
+    key: 'task.allocation.shape.migNamed',
+    params: { template: '3g.40gb' },
+  });
+  assert.equal(getAllocationShapeCopy({ allocationShape: 'mig' }).key, 'task.allocation.shape.mig');
+  for (const row of [{}, { allocationShape: '' }, { allocationShape: 'vgpu' }, undefined]) {
     assert.equal(getAllocationShapeCopy(row), undefined);
   }
 });
@@ -47,7 +52,7 @@ test('only a soft split without a share reads as unreserved', () => {
 
 test('every shape and reason has copy in both languages', () => {
   const keys = [
-    ...['whole', 'template', 'templateNamed', 'soft', 'unknown'].map((shape) => `task.allocation.shape.${shape}`),
+    ...['whole', 'template', 'templateNamed', 'soft', 'mig', 'migNamed', 'unknown'].map((shape) => `task.allocation.shape.${shape}`),
     ...CORES_UNKNOWN_REASONS.map((reason) => `task.allocation.reason.${reason}`),
     'task.allocation.label',
     'task.allocation.reasonLabel',
@@ -56,6 +61,8 @@ test('every shape and reason has copy in both languages', () => {
     assert.equal(typeof lookup(zh, key), 'string', `zh ${key}`);
     assert.equal(typeof lookup(en, key), 'string', `en ${key}`);
   }
-  assert.match(lookup(zh, 'task.allocation.shape.templateNamed'), /\{template\}/);
-  assert.match(lookup(en, 'task.allocation.shape.templateNamed'), /\{template\}/);
+  for (const key of ['task.allocation.shape.templateNamed', 'task.allocation.shape.migNamed']) {
+    assert.match(lookup(zh, key), /\{template\}/);
+    assert.match(lookup(en, key), /\{template\}/);
+  }
 });
