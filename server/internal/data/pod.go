@@ -10,6 +10,7 @@ import (
 	"vgpu/internal/conf"
 	"vgpu/internal/devicecatalog"
 	"vgpu/internal/provider/ascend"
+	"vgpu/internal/provider/nvidia"
 	"vgpu/internal/provider/util"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -108,7 +109,7 @@ func (r *podRepo) onAddPod(obj interface{}) {
 		r.log.Errorf("cannot decode device allocations for pod %s/%s: %v", pod.Namespace, pod.Name, err)
 		return
 	}
-	bizPodDev := bizPodDevices(podDev)
+	bizPodDev := bizPodDevices(pod, podDev)
 	ascendDevices, err := r.ascend.Decode(pod, node)
 	if err != nil {
 		r.log.Errorf("cannot decode Ascend allocations for pod %s/%s: %v", pod.Namespace, pod.Name, err)
@@ -120,7 +121,8 @@ func (r *podRepo) onAddPod(obj interface{}) {
 }
 
 // Explicit conversion: copier silently drops devices once the structs differ.
-func bizPodDevices(devices util.PodDevices) biz.PodDevices {
+func bizPodDevices(pod *corev1.Pod, devices util.PodDevices) biz.PodDevices {
+	migDevices := nvidia.MigDevices(pod)
 	result := make(biz.PodDevices, len(devices))
 	for deviceType, slots := range devices {
 		converted := make(biz.PodSingleDevice, len(slots))
@@ -134,12 +136,29 @@ func bizPodDevices(devices util.PodDevices) biz.PodDevices {
 					Usedmem:   device.Usedmem,
 					Usedcores: device.Usedcores,
 					Priority:  device.Priority,
+					// Non-Ascend providers key their allocations by vendor.
+					Vendor:       deviceType,
+					Shape:        splitShape(deviceType, migDevices[i][j].Profile),
+					Template:     migDevices[i][j].Profile,
+					MigPlacement: biz.MigPlacement{Start: migDevices[i][j].Start, Size: migDevices[i][j].Size},
 				}
 			}
 		}
 		result[deviceType] = converted
 	}
 	return result
+}
+
+// splitShape names how HAMi divided the device. NVIDIA allocations are MIG
+// devices when the scheduler reserved one, and hami-core otherwise.
+func splitShape(deviceType, migProfile string) string {
+	if deviceType != biz.NvidiaGPUDevice {
+		return ""
+	}
+	if migProfile != "" {
+		return biz.SplitShapeMig
+	}
+	return biz.SplitShapeSoft
 }
 
 func ascendPodSingleDevice(slots [][]ascend.Device) biz.PodSingleDevice {
