@@ -70,7 +70,11 @@
                       <span class="resource-card-footer-label">{{ $t('dashboard.allocRateLegend') }}</span>
                     </div>
                     <div class="resource-card-footer-value">
-                      <span class="resource-card-footer-percent">{{ computeAllocPercentText }}</span>
+                      <t-tooltip v-if="computeAllocNote" :content="computeAllocNote">
+                        <span class="resource-card-footer-percent">{{ computeAllocPercentText }}</span>
+                      </t-tooltip>
+                      <span v-else class="resource-card-footer-percent">{{ computeAllocPercentText }}</span>
+                      <span v-if="computeAllocNote" class="resource-card-sr-only">{{ computeAllocNote }}</span>
                       <t-progress
                         v-if="computeAllocPercentProgress !== undefined"
                         theme="circle"
@@ -182,8 +186,9 @@
           <VChart
               :option="
               getRangeOptions({
-                allocation: gaugeConfig[0].data,
+                allocation: computeAllocTrend[0]?.data,
                 usage: gaugeConfig[2].data,
+                allocationName: computeAllocLegend,
               }, t)
             "
             :autoresize="true"
@@ -225,7 +230,16 @@ import {
 } from '~/vgpu/hooks/detail-resource-state.mjs';
 import useDetailResource from '~/vgpu/hooks/useDetailResource';
 import useInstantVector from '~/vgpu/hooks/useInstantVector';
+import useRangeVector from '~/vgpu/hooks/useRangeVector';
 import { readReadyMetricField } from '~/vgpu/hooks/instant-vector-state.mjs';
+import {
+  isLowerBound,
+  isNothingCounted,
+  lowerBoundMessage,
+  nothingCountedMessage,
+  readTrendUncounted,
+  readUncountedMetric,
+} from '~/vgpu/metrics/uncounted.mjs';
 import VChart from 'vue-echarts';
 import nodeApi from '~/vgpu/api/node';
 import { getRangeOptions } from './getOptions';
@@ -235,6 +249,7 @@ import {
   buildComputeAllocationQueries,
   buildMemoryAllocationQueries,
   buildMemoryUsageQueries,
+  buildUnknownComputeShareQuery,
 } from '~/vgpu/metrics/query-contract.mjs';
 import { renderPromQLTemplate } from '~/vgpu/metrics/promql-template.mjs';
 import { createNodeComputeUsageGaugeConfig } from './metric-config.mjs';
@@ -276,6 +291,9 @@ const nodeMetricSelector = 'node=$node';
 const computeAllocationQueries = buildComputeAllocationQueries({
   selector: nodeMetricSelector,
 });
+const uncountedComputeShareQuery = buildUnknownComputeShareQuery({
+  selector: nodeMetricSelector,
+});
 const memoryAllocationQueries = buildMemoryAllocationQueries({
   selector: nodeMetricSelector,
 });
@@ -289,7 +307,6 @@ const _gaugeConfigBase = [
     percent: 0,
     query: computeAllocationQueries.query,
     totalQuery: computeAllocationQueries.totalQuery,
-    percentQuery: computeAllocationQueries.percentQuery,
     total: 0,
     used: 0,
     unit: ' ',
@@ -317,16 +334,36 @@ const _gaugeConfigBase = [
   },
 ];
 
+const renderNodeQuery = (query) =>
+  renderPromQLTemplate(query, {
+    node: detailStatus.value === REQUEST_STATUS.READY
+      ? detail.value.name
+      : 'undefined',
+  });
+
 const gaugeData = useInstantVector(
   _gaugeConfigBase.map(item => ({ ...item, title: t(item.titleKey) })),
-  (query) =>
-    renderPromQLTemplate(query, {
-      node: detailStatus.value === REQUEST_STATUS.READY
-        ? detail.value.name
-        : 'undefined',
-    }),
+  renderNodeQuery,
   times,
 );
+
+// The node's allocation rate leaves out allocations whose share HAMi does not
+// state, so it reads as a lower bound unless none are confirmed.
+const uncountedMetric = useInstantVector(
+  [{ query: uncountedComputeShareQuery }],
+  renderNodeQuery,
+  times,
+);
+const computeAllocUncounted = computed(() => readUncountedMetric(uncountedMetric.value[0]));
+// One group, so the count always describes the range the line shows.
+const { data: computeAllocTrend } = useRangeVector(
+  [{ query: computeAllocationQueries.percentQuery }, { query: uncountedComputeShareQuery, optional: true }],
+  renderNodeQuery,
+  times,
+);
+const computeAllocLegend = computed(() => t(isLowerBound(readTrendUncounted(computeAllocTrend.value[1]))
+  ? 'dashboard.allocRateLowerBoundLegend'
+  : 'dashboard.allocRateLegend'));
 
 const gaugeConfig = computed(() =>
   gaugeData.value.map((item) => ({
@@ -364,24 +401,31 @@ const memoryUsagePercentRaw = computed(() => readGaugeField(3, 'percent'));
 
 const clampPercent = (v) => Math.max(0, Math.min(100, v));
 const roundPercentForProgress = (p) => (p === undefined ? undefined : roundToDecimal(p, 2));
-const buildPercentViews = (rawComputed) => {
+const buildPercentViews = (rawComputed, lowerBound, hidden) => {
   const progress = computed(() => {
     const p = rawComputed.value;
-    return p === undefined ? undefined : clampPercent(p);
+    return p === undefined || hidden?.value ? undefined : clampPercent(p);
   });
   const progressRounded = computed(() => roundPercentForProgress(progress.value));
   const text = computed(() => {
     const p = rawComputed.value;
-    return p === undefined ? '--' : `${Number(p).toFixed(2)}%`;
+    if (p === undefined || hidden?.value || (lowerBound && lowerBound.value === undefined)) return '--';
+    return `${lowerBound && isLowerBound(lowerBound.value) ? '≥' : ''}${Number(p).toFixed(2)}%`;
   });
   return { progress, progressRounded, text };
 };
+
+const computeAllocNothingCounted = computed(() => isNothingCounted(readGaugeField(0, 'used'), computeAllocUncounted.value));
+const computeAllocNote = computed(() => {
+  if (computeAllocNothingCounted.value) return nothingCountedMessage(t, computeAllocUncounted.value);
+  return isLowerBound(computeAllocUncounted.value) ? lowerBoundMessage(t, computeAllocUncounted.value) : '';
+});
 
 const {
   progress: computeAllocPercentProgress,
   progressRounded: computeAllocPercentProgressRounded,
   text: computeAllocPercentText,
-} = buildPercentViews(computeAllocPercentRaw);
+} = buildPercentViews(computeAllocPercentRaw, computeAllocUncounted, computeAllocNothingCounted);
 const {
   progress: computeUsagePercentProgress,
   progressRounded: computeUsagePercentProgressRounded,
@@ -489,6 +533,18 @@ const detailColumnGroups = computed(() => {
 </script>
 
 <style scoped lang="scss">
+.resource-card-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .node-overview-wrap {
   display: flex;
   margin-top: 16px;

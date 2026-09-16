@@ -96,7 +96,8 @@ export const settleRangeGroupGeneration = (
 ) => {
   if (group.requestId !== requestId) return group;
 
-  const failedOutcome = outcomes.find((outcome) => outcome.failed);
+  // An optional series that fails settles as failed instead of holding the group back.
+  const failedOutcome = outcomes.find((outcome, index) => outcome.failed && !group.dataSource[index]?.optional);
   if (group.hasResolved && failedOutcome) {
     return {
       ...group,
