@@ -10,6 +10,18 @@ export const aggregateStatuses = (items = []) => {
   return REQUEST_STATUS.MISSING;
 };
 
+export const UNKNOWN_SHARES_STATUS = 'unknown-shares';
+
+// Compute allocation is suppressed while any allocation's share is unknown;
+// say so instead of reporting missing data.
+export const applyUnknownShareStatus = (metrics = [], unknownCount = 0) => (
+  metrics.map((metric) => (
+    metric?.id === 'compute-allocation' && metric.status === REQUEST_STATUS.MISSING && unknownCount > 0
+      ? { ...metric, status: UNKNOWN_SHARES_STATUS, unknownShares: unknownCount }
+      : metric
+  ))
+);
+
 export const stateTextKey = (status, { metric = true } = {}) => {
   if (status === REQUEST_STATUS.LOADING) return 'common.loading';
   if (status === REQUEST_STATUS.ERROR) {
@@ -19,6 +31,7 @@ export const stateTextKey = (status, { metric = true } = {}) => {
     return metric ? 'dashboard.metricInvalid' : 'common.requestError';
   }
   if (status === 'no-capacity') return 'dashboard.metricNoCapacity';
+  if (status === UNKNOWN_SHARES_STATUS) return 'dashboard.metricUnknownShares';
   return metric ? 'dashboard.metricNoData' : 'common.noData';
 };
 

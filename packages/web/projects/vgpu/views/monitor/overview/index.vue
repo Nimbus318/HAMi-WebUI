@@ -404,7 +404,7 @@ import {
   createNodeWorkloadDistributionQuery,
   createOverviewGaugeConfigs,
 } from './metric-config.mjs';
-import { buildClusterAllocatableQueries } from '~/vgpu/metrics/query-contract.mjs';
+import { buildClusterAllocatableQueries, buildUnknownComputeShareQuery } from '~/vgpu/metrics/query-contract.mjs';
 import {
   createRequestState,
   rejectRequest,
@@ -414,9 +414,11 @@ import {
 } from '@/hooks/request-state.mjs';
 import {
   aggregateStatuses,
+  applyUnknownShareStatus,
   getPartialRangeStates,
   stateTextKey,
 } from './overview-state.mjs';
+import { readReadyMetricField } from '~/vgpu/hooks/instant-vector-state.mjs';
 import { isNodeSchedulingEligible } from '~/vgpu/views/node/node-status.mjs';
 
 const router = useRouter();
@@ -573,8 +575,15 @@ const clusterResourceConfig = useInstantVector([
   },
 ]);
 
+const unknownShareMetric = useInstantVector([{ query: buildUnknownComputeShareQuery() }]);
+const unknownShares = computed(() => {
+  const value = readReadyMetricField(unknownShareMetric.value[0], 'count');
+  const count = Number(value);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+});
+
 const cardGaugeConfig = computed(() => {
-  return _cardGaugeConfig.value.map((item) => ({
+  return applyUnknownShareStatus(_cardGaugeConfig.value, unknownShares.value).map((item) => ({
     ...item,
     title: t(item.titleKey),
     description: t(item.descriptionKey),

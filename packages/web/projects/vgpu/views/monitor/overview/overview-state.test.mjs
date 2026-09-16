@@ -3,7 +3,9 @@ import test from 'node:test';
 
 import { REQUEST_STATUS } from '../../../../../src/hooks/request-state.mjs';
 import {
+  UNKNOWN_SHARES_STATUS,
   aggregateStatuses,
+  applyUnknownShareStatus,
   getPartialRangeStates,
   selectRangeAxisData,
   stateTextKey,
@@ -82,4 +84,22 @@ test('a partial range panel takes its axis from an available series', () => {
     ]),
     readyData,
   );
+});
+
+test('a suppressed compute allocation says how many shares are unknown', () => {
+  const metrics = [
+    { id: 'vgpu-allocation', status: REQUEST_STATUS.MISSING },
+    { id: 'compute-allocation', status: REQUEST_STATUS.MISSING },
+    { id: 'memory-allocation', status: REQUEST_STATUS.READY },
+  ];
+  const applied = applyUnknownShareStatus(metrics, 3);
+  assert.deepEqual(applied.map(({ status }) => status), [
+    REQUEST_STATUS.MISSING, UNKNOWN_SHARES_STATUS, REQUEST_STATUS.READY,
+  ]);
+  assert.equal(applied[1].unknownShares, 3);
+  assert.equal(stateTextKey(UNKNOWN_SHARES_STATUS), 'dashboard.metricUnknownShares');
+  // Nothing else is relabelled: no unknown allocations, or the metric has data.
+  assert.deepEqual(applyUnknownShareStatus(metrics, 0), metrics);
+  assert.deepEqual(applyUnknownShareStatus([{ id: 'compute-allocation', status: REQUEST_STATUS.READY }], 3),
+    [{ id: 'compute-allocation', status: REQUEST_STATUS.READY }]);
 });

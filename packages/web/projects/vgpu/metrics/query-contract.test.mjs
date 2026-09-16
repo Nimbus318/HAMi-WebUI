@@ -11,10 +11,11 @@ import {
   buildMemoryUsageQueries,
   buildTaskAllocationTopQueries,
   buildTaskComputeAllocationQuery,
-  buildTaskCountQueries,
   buildTaskContainerResourceQueries,
+  buildTaskCountQueries,
   buildTaskMonitoringQueries,
   buildTaskResourceOverviewQueries,
+  buildUnknownComputeShareQuery,
 } from './query-contract.mjs';
 import {
   promQLStringLiteral,
@@ -367,5 +368,15 @@ test('grouped query labels reject malformed PromQL input', () => {
   assert.throws(
     () => buildGroupedResourceTopQueries(''),
     /group label is required/,
+  );
+});
+
+test('unknown compute shares are counted from the same series that suppresses the rate', () => {
+  const query = buildUnknownComputeShareQuery();
+  assert.equal(query, 'count(hami_container_vcore_allocation_known == 0)');
+  assert.ok(buildComputeAllocationQueries().percentQuery.includes('hami_container_vcore_allocation_known'));
+  assert.equal(
+    buildUnknownComputeShareQuery({ selector: 'node="node-a"' }),
+    'count(hami_container_vcore_allocation_known{node="node-a"} == 0)',
   );
 });
