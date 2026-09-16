@@ -10,6 +10,7 @@ import (
 	"vgpu/internal/biz"
 	"vgpu/internal/devicecatalog"
 	"vgpu/internal/provider/ascend"
+	"vgpu/internal/provider/nvidia"
 	"vgpu/internal/provider/util"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -160,4 +161,39 @@ func TestReadsCopyOnlyContainersWithAscendDevices(t *testing.T) {
 	if got == ascendOne || got.ContainerDevices[0].Usedcores != 25 || ascendOne.ContainerDevices[0].Usedcores != 0 {
 		t.Fatalf("interpreted = %+v, stored = %+v", got.ContainerDevices[0], ascendOne.ContainerDevices[0])
 	}
+}
+func TestSplitModeIsReportedForBothVendors(t *testing.T) {
+	// The allocation vocabulary is shared, so the API never mixes two spellings.
+	if ascend.ShapeSoft != biz.SplitShapeSoft || ascend.ShapeTemplate != biz.SplitShapeTemplate ||
+		ascend.ShapeWhole != biz.SplitShapeWhole || ascend.ShapeUnknown != biz.SplitShapeUnknown {
+		t.Fatal("the Ascend provider and the API disagree on shape names")
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "train", UID: "pod-3", Annotations: map[string]string{
+			util.AssignedNodeAnnotations:     "node-1",
+			"hami.io/vgpu-devices-allocated": "GPU-0,NVIDIA,4096,30:;GPU-1,NVIDIA,40960,100:",
+			nvidia.MigAllocationsAnnotation:  `[{"containerIndex":1,"deviceIndex":0,"gpuUUID":"GPU-1","profile":"3g.40gb","placement":{"start":0,"size":4}}]`,
+		}},
+		Spec: corev1.PodSpec{NodeName: "node-1", InitContainers: []corev1.Container{{Name: "prepare"}}, Containers: []corev1.Container{{Name: "worker"}}},
+	}
+	devices := bizPodDevices(pod, mustDecodePodDevices(t, pod))
+	slots := devices[biz.NvidiaGPUDevice]
+	if len(slots) != 2 {
+		t.Fatalf("slots = %v", slots)
+	}
+	if got := slots[0][0]; got.Vendor != biz.NvidiaGPUDevice || got.Shape != biz.SplitShapeSoft || got.Template != "" {
+		t.Fatalf("hami-core device = %+v", got)
+	}
+	if got := slots[1][0]; got.Shape != biz.SplitShapeMig || got.Template != "3g.40gb" {
+		t.Fatalf("MIG device = %+v", got)
+	}
+}
+
+func mustDecodePodDevices(t *testing.T, pod *corev1.Pod) util.PodDevices {
+	t.Helper()
+	decoded, err := util.DecodePodDevices(pod, log.NewHelper(log.NewStdLogger(io.Discard)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return decoded
 }

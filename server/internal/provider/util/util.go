@@ -368,15 +368,16 @@ func UnMarshalNodeDevices(str string) ([]*DeviceInfo, error) {
 
 func MapNewDeviceInfoToDeviceInfo(newDeviceInfo *NewDeviceInfo) *DeviceInfo {
 	return &DeviceInfo{
-		ID:      newDeviceInfo.ID,
-		AliasId: newDeviceInfo.ID,
-		Index:   newDeviceInfo.Index,
-		Count:   newDeviceInfo.Count,
-		Devmem:  newDeviceInfo.Devmem,
-		Devcore: newDeviceInfo.Devcore,
-		Type:    newDeviceInfo.Type,
-		Numa:    newDeviceInfo.Numa,
-		Mode:    newDeviceInfo.Mode,
-		Health:  newDeviceInfo.Health,
+		ID:          newDeviceInfo.ID,
+		AliasId:     newDeviceInfo.ID,
+		Index:       newDeviceInfo.Index,
+		Count:       newDeviceInfo.Count,
+		Devmem:      newDeviceInfo.Devmem,
+		Devcore:     newDeviceInfo.Devcore,
+		Type:        newDeviceInfo.Type,
+		Numa:        newDeviceInfo.Numa,
+		Mode:        newDeviceInfo.Mode,
+		MigProfiles: newDeviceInfo.MIGProfiles,
+		Health:      newDeviceInfo.Health,
 	}
 }
