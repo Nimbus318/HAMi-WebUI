@@ -100,8 +100,24 @@ type DeviceInfo struct {
 	Mode    string
 	Health  bool
 	Driver  string
+	// MIG profiles the device plugin registered, with the placements NVML allows.
+	MigProfiles []MigProfile
 	// Registered by a device plugin but absent from HAMi's device configuration.
 	Unconfigured bool
+}
+
+type MigPlacement struct {
+	Start int32 `json:"start"`
+	Size  int32 `json:"size"`
+}
+
+type MigProfile struct {
+	Name          string         `json:"name,omitempty"`
+	MemoryMB      int32          `json:"memoryMB,omitempty"`
+	SliceCount    int32          `json:"sliceCount,omitempty"`
+	InstanceCount int32          `json:"instanceCount,omitempty"`
+	Core          int32          `json:"core,omitempty"`
+	Placements    []MigPlacement `json:"placements,omitempty"`
 }
 
 type NewDeviceInfo struct {
@@ -113,6 +129,7 @@ type NewDeviceInfo struct {
 	Type         string         `json:"type,omitempty"`
 	Numa         int            `json:"numa,omitempty"`
 	Mode         string         `json:"mode,omitempty"`
+	MIGProfiles  []MigProfile   `json:"migProfiles,omitempty"`
 	Health       bool           `json:"health,omitempty"`
 	DeviceVendor string         `json:"devicevendor,omitempty"`
 	CustomInfo   map[string]any `json:"custominfo,omitempty"`

@@ -100,6 +100,7 @@ import useLocalPagination from '~/vgpu/hooks/useLocalPagination';
 import { getAllocationPercent } from './allocation-percent.mjs';
 import UnconfiguredTag from './components/UnconfiguredTag.vue';
 import { deviceWording } from '~/vgpu/components/device-copy.mjs';
+import { getSplitIcon, getSplitModeKey } from '~/vgpu/components/split-mode.mjs';
 import useFetchList from '@/hooks/useFetchList';
 
 const props = defineProps(['hideTitle', 'filters']);
@@ -243,6 +244,21 @@ const baseColumns = computed(() => [
           <svg-icon icon={icon} style={{ fontSize: '16px' }} />
           <span>{text}</span>
           {unconfigured ? <UnconfiguredTag /> : null}
+        </span>
+      );
+    },
+  },
+  {
+    title: t('card.splitMode.label'),
+    dataIndex: 'mode',
+    width: 190,
+    render: ({ mode }) => {
+      const key = getSplitModeKey(mode);
+      if (!key) return <span>--</span>;
+      return (
+        <span class="card-split-mode">
+          <svg-icon icon={getSplitIcon(mode)} aria-hidden="true" />
+          <span>{t(key)}</span>
         </span>
       );
     },
@@ -541,6 +557,18 @@ onMounted(() => {
 :deep(.card-id-cell-name) {
   display: flex;
   line-height: 20px;
+}
+
+:deep(.card-split-mode) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
 }
 
 :deep(.card-id-cell-model) {
