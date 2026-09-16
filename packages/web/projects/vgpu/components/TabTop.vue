@@ -50,7 +50,10 @@
                   {{ item.name }}
                 </span>
               </slot>
-              <span class="tab-top-value">
+              <t-tooltip v-if="isLowerBound(item.uncounted)" :content="lowerBoundMessage(t, item.uncounted)">
+                <span class="tab-top-value">≥{{ item.valueDisplay }}</span>
+              </t-tooltip>
+              <span v-else class="tab-top-value">
                 {{ item.valueDisplay }}
               </span>
             </div>
@@ -90,7 +93,9 @@ import {
 import {
   formatRankingValue,
   readRankingRows,
+  readUncountedRows,
 } from './tab-top-state.mjs';
+import { isLowerBound, lowerBoundMessage } from '../metrics/uncounted.mjs';
 
 const props = defineProps({
   title: String,
@@ -148,6 +153,7 @@ const displayItems = computed(() => {
       index: index + 1,
       percentage: getPercentage(item.value),
       valueDisplay: formatRankingValue(item.value, unit),
+      uncounted: config?.uncounted === null ? null : config?.uncounted?.[item.name] || 0,
     }));
 });
 
@@ -180,9 +186,19 @@ const fetchData = (configList) => {
     const state = configList[i];
     const hasResolved = state.hasResolved;
     const requestId = startRequest(state, { hasResolved });
+    // Rows whose rate leaves allocations out read as lower bounds, and every row
+    // does when that count cannot be read; the list waits for it either way.
+    const uncounted = v.uncountedQuery
+      ? cardApi.getInstantVector({ query: v.uncountedQuery }).then(
+        (res) => readUncountedRows(res, v.nameKey),
+        () => null,
+      )
+      : Promise.resolve({});
     cardApi.getInstantVector({ query: v.query }).then(
-      (res) => {
+      async (res) => {
         const result = readRankingRows(res, v.nameKey);
+        const counts = await uncounted;
+        if (requestId === state.requestId) state.uncounted = counts;
         resolveRequest(state, {
           ...result,
           requestId,
@@ -209,6 +225,7 @@ watch(
       return {
         ...item,
         data: old.data,
+        uncounted: old.uncounted,
         status: old.status,
         hasResolved: old.hasResolved,
         refreshing: old.refreshing,

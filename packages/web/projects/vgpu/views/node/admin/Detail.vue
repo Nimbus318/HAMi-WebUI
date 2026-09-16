@@ -70,7 +70,13 @@
                       <span class="resource-card-footer-label">{{ $t('dashboard.allocRateLegend') }}</span>
                     </div>
                     <div class="resource-card-footer-value">
-                      <span class="resource-card-footer-percent">{{ computeAllocPercentText }}</span>
+                      <t-tooltip
+                        v-if="isLowerBound(computeAllocUncounted)"
+                        :content="lowerBoundMessage($t, computeAllocUncounted)"
+                      >
+                        <span class="resource-card-footer-percent">{{ computeAllocPercentText }}</span>
+                      </t-tooltip>
+                      <span v-else class="resource-card-footer-percent">{{ computeAllocPercentText }}</span>
                       <t-progress
                         v-if="computeAllocPercentProgress !== undefined"
                         theme="circle"
@@ -184,6 +190,7 @@
               getRangeOptions({
                 allocation: gaugeConfig[0].data,
                 usage: gaugeConfig[2].data,
+                allocationName: computeAllocLegend,
               }, t)
             "
             :autoresize="true"
@@ -225,7 +232,9 @@ import {
 } from '~/vgpu/hooks/detail-resource-state.mjs';
 import useDetailResource from '~/vgpu/hooks/useDetailResource';
 import useInstantVector from '~/vgpu/hooks/useInstantVector';
+import useRangeVector from '~/vgpu/hooks/useRangeVector';
 import { readReadyMetricField } from '~/vgpu/hooks/instant-vector-state.mjs';
+import { isLowerBound, lowerBoundMessage, readUncounted, readUncountedRange } from '~/vgpu/metrics/uncounted.mjs';
 import VChart from 'vue-echarts';
 import nodeApi from '~/vgpu/api/node';
 import { getRangeOptions } from './getOptions';
@@ -235,6 +244,7 @@ import {
   buildComputeAllocationQueries,
   buildMemoryAllocationQueries,
   buildMemoryUsageQueries,
+  buildUnknownComputeShareQuery,
 } from '~/vgpu/metrics/query-contract.mjs';
 import { renderPromQLTemplate } from '~/vgpu/metrics/promql-template.mjs';
 import { createNodeComputeUsageGaugeConfig } from './metric-config.mjs';
@@ -274,6 +284,9 @@ start.setTime(start.getTime() - 3600 * 1000);
 const times = ref([start, end]);
 const nodeMetricSelector = 'node=$node';
 const computeAllocationQueries = buildComputeAllocationQueries({
+  selector: nodeMetricSelector,
+});
+const uncountedComputeShareQuery = buildUnknownComputeShareQuery({
   selector: nodeMetricSelector,
 });
 const memoryAllocationQueries = buildMemoryAllocationQueries({
@@ -317,16 +330,31 @@ const _gaugeConfigBase = [
   },
 ];
 
+const renderNodeQuery = (query) =>
+  renderPromQLTemplate(query, {
+    node: detailStatus.value === REQUEST_STATUS.READY
+      ? detail.value.name
+      : 'undefined',
+  });
+
 const gaugeData = useInstantVector(
   _gaugeConfigBase.map(item => ({ ...item, title: t(item.titleKey) })),
-  (query) =>
-    renderPromQLTemplate(query, {
-      node: detailStatus.value === REQUEST_STATUS.READY
-        ? detail.value.name
-        : 'undefined',
-    }),
+  renderNodeQuery,
   times,
 );
+
+// The node's allocation rate leaves out allocations whose share HAMi does not
+// state, so it reads as a lower bound unless none are confirmed.
+const uncountedMetric = useInstantVector(
+  [{ query: uncountedComputeShareQuery }],
+  renderNodeQuery,
+  times,
+);
+const computeAllocUncounted = computed(() => readUncounted(uncountedMetric.value[0]?.status, uncountedMetric.value[0]?.count));
+const { data: uncountedRange } = useRangeVector([{ query: uncountedComputeShareQuery }], renderNodeQuery, times);
+const computeAllocLegend = computed(() => t(isLowerBound(readUncountedRange(uncountedRange.value[0]))
+  ? 'dashboard.allocRateLowerBoundLegend'
+  : 'dashboard.allocRateLegend'));
 
 const gaugeConfig = computed(() =>
   gaugeData.value.map((item) => ({
@@ -364,7 +392,7 @@ const memoryUsagePercentRaw = computed(() => readGaugeField(3, 'percent'));
 
 const clampPercent = (v) => Math.max(0, Math.min(100, v));
 const roundPercentForProgress = (p) => (p === undefined ? undefined : roundToDecimal(p, 2));
-const buildPercentViews = (rawComputed) => {
+const buildPercentViews = (rawComputed, lowerBound) => {
   const progress = computed(() => {
     const p = rawComputed.value;
     return p === undefined ? undefined : clampPercent(p);
@@ -372,7 +400,8 @@ const buildPercentViews = (rawComputed) => {
   const progressRounded = computed(() => roundPercentForProgress(progress.value));
   const text = computed(() => {
     const p = rawComputed.value;
-    return p === undefined ? '--' : `${Number(p).toFixed(2)}%`;
+    if (p === undefined || (lowerBound && lowerBound.value === undefined)) return '--';
+    return `${lowerBound && isLowerBound(lowerBound.value) ? '≥' : ''}${Number(p).toFixed(2)}%`;
   });
   return { progress, progressRounded, text };
 };
@@ -381,7 +410,7 @@ const {
   progress: computeAllocPercentProgress,
   progressRounded: computeAllocPercentProgressRounded,
   text: computeAllocPercentText,
-} = buildPercentViews(computeAllocPercentRaw);
+} = buildPercentViews(computeAllocPercentRaw, computeAllocUncounted);
 const {
   progress: computeUsagePercentProgress,
   progressRounded: computeUsagePercentProgressRounded,

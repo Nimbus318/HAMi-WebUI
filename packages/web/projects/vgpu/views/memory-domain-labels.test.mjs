@@ -116,7 +116,9 @@ test('memory and compute trend legends use the same compact labels', () => {
     cardDetail.indexOf('lineToolsView'),
   );
 
-  assert.match(computeTrend, /dashboard\.allocRateLegend/);
+  // The compute allocation legend switches to its lower-bound form.
+  assert.match(computeTrend, /name: computeAllocLegend/);
+  assert.match(cardDetail, /'dashboard\.allocRateLowerBoundLegend'\s*:\s*'dashboard\.allocRateLegend'/);
   assert.match(computeTrend, /dashboard\.usageRateLegend/);
   assert.doesNotMatch(computeTrend, /dashboard\.mem(?:Alloc|Usage)Rate/);
   assert.match(memoryTrend, /dashboard\.allocRateLegend/);

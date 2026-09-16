@@ -37,8 +37,12 @@
         aria-hidden="true"
       />
       <template v-else-if="isReady">
+        <span v-if="lowerBound" class="gauge-card__bound" aria-hidden="true">≥</span>
         <span class="gauge-card__number">{{ numericPercent.toFixed(1) }}</span>
         <span class="gauge-card__unit">{{ gaugeUnit || '%' }}</span>
+        <span v-if="lowerBound" class="gauge-card__sr-only">
+          {{ lowerBoundMessage($t, uncounted) }}
+        </span>
       </template>
       <span v-else class="gauge-card__number gauge-card__number--empty">—</span>
     </div>
@@ -79,6 +83,9 @@
         <span v-if="unit" class="gauge-card__detail-unit"
           >&nbsp;{{ unit }}</span
         >
+        <span v-if="lowerBound" class="gauge-card__uncounted">
+          {{ uncounted === null ? $t('dashboard.metricUncountedUnknown') : $t('dashboard.metricUncounted', { count: uncounted }) }}
+        </span>
       </template>
       <span v-else-if="status === 'error'">{{
         $t('dashboard.metricQueryFailed')
@@ -105,6 +112,7 @@
 import { computed, ref, useId } from 'vue';
 import { HelpCircleIcon } from 'tdesign-icons-vue-next';
 import { LONG_TEXT_TOOLTIP_STYLE } from './tooltip-policy.mjs';
+import { isLowerBound, lowerBoundMessage } from '../metrics/uncounted.mjs';
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -117,6 +125,9 @@ const props = defineProps({
   usedPrecision: { type: Number, default: 1 },
   totalPrecision: { type: Number, default: 0 },
   status: { type: String, default: 'loading' },
+  // Allocations the rate leaves out, which makes the value a lower bound.
+  // Allocations the rate leaves out; null when that count cannot be read.
+  uncounted: { type: Number, default: 0 },
   total: { type: [Number, String], default: 0 },
   used: { type: [Number, String], default: 0 },
   unit: { type: String, default: '' },
@@ -132,6 +143,7 @@ const helpFocused = ref(false);
 const helpVisible = computed(() => helpHovered.value || helpFocused.value);
 const showProgress = computed(() => props.showProgress !== false);
 const numericPercent = computed(() => Number(props.percent));
+const lowerBound = computed(() => isLowerBound(props.uncounted));
 const isReady = computed(
   () => props.status === 'ready' && Number.isFinite(numericPercent.value),
 );
@@ -216,6 +228,13 @@ const progressColor = computed(() => {
     margin-bottom: 10px;
   }
 
+  &__bound {
+    font-size: 16px;
+    font-weight: 600;
+    color: #697886;
+    margin-right: 2px;
+  }
+
   &__number {
     font-size: 22px;
     font-weight: 600;
@@ -250,6 +269,11 @@ const progressColor = computed(() => {
       color: #1d2b3a;
       font-weight: 500;
     }
+  }
+
+  &__uncounted {
+    display: block;
+    color: #697886;
   }
 }
 </style>

@@ -105,7 +105,13 @@
                   <div class="resource-card-footer-value">
                     <span class="resource-card-footer-metric resource-card-footer-metric--allocated">{{ computeAllocUsedText }}</span>
                     <span class="resource-card-footer-sep">/</span>
-                    <span class="resource-card-footer-percent">{{ computeAllocPercentText }}</span>
+                    <t-tooltip
+                      v-if="isLowerBound(computeAllocUncounted)"
+                      :content="lowerBoundMessage($t, computeAllocUncounted)"
+                    >
+                      <span class="resource-card-footer-percent">{{ computeAllocPercentText }}</span>
+                    </t-tooltip>
+                    <span v-else class="resource-card-footer-percent">{{ computeAllocPercentText }}</span>
                     <t-progress
                       v-if="computeAllocPercentProgress !== undefined"
                       theme="circle"
@@ -265,7 +271,7 @@
               {
                 ...getRangeOptions([
                   {
-                    name: t('dashboard.allocRateLegend'),
+                    name: computeAllocLegend,
                     data: gaugeConfig[0]?.data,
                     itemStyle: {
                       color: '#5B8FF9',
@@ -355,7 +361,9 @@ import MetricHelp from '~/vgpu/components/MetricHelp.vue';
 import { ref, watch, computed } from 'vue';
 import { HelpCircleIcon } from 'tdesign-icons-vue-next';
 import useInstantVector from '~/vgpu/hooks/useInstantVector';
+import useRangeVector from '~/vgpu/hooks/useRangeVector';
 import { readReadyMetricField } from '~/vgpu/hooks/instant-vector-state.mjs';
+import { isLowerBound, lowerBoundMessage, readUncounted, readUncountedRange } from '~/vgpu/metrics/uncounted.mjs';
 import useDetailResource from '~/vgpu/hooks/useDetailResource.js';
 import { classifyDetailPayload } from '~/vgpu/hooks/detail-resource-state.mjs';
 import { REQUEST_STATUS } from '@/hooks/request-state.mjs';
@@ -369,6 +377,7 @@ import { getRangeOptions } from '../../monitor/overview/getOptions';
 import { useI18n } from 'vue-i18n';
 import {
   buildComputeAllocationQueries,
+  buildUnknownComputeShareQuery,
   buildMemoryAllocationQueries,
   buildMemoryUsageQueries,
 } from '~/vgpu/metrics/query-contract.mjs';
@@ -576,13 +585,25 @@ const _gaugeConfigBase = [
   },
 ];
 
+const renderCardQuery = (query) => renderPromQLTemplate(query, {
+  device_uuid: detailCardUuid.value,
+});
+
 const gaugeData = useInstantVector(
   _gaugeConfigBase.map(item => ({ ...item, title: t(item.titleKey) })),
-  (query) => renderPromQLTemplate(query, {
-    device_uuid: detailCardUuid.value,
-  }),
+  renderCardQuery,
   times,
 );
+
+// The card's allocation rate leaves out allocations whose share HAMi does not
+// state, so it reads as a lower bound unless none are confirmed.
+const uncountedQuery = buildUnknownComputeShareQuery({ selector: cardMetricSelector });
+const uncountedMetric = useInstantVector([{ query: uncountedQuery }], renderCardQuery, times);
+const computeAllocUncounted = computed(() => readUncounted(uncountedMetric.value[0]?.status, uncountedMetric.value[0]?.count));
+const { data: uncountedRange } = useRangeVector([{ query: uncountedQuery }], renderCardQuery, times);
+const computeAllocLegend = computed(() => t(isLowerBound(readUncountedRange(uncountedRange.value[0]))
+  ? 'dashboard.allocRateLowerBoundLegend'
+  : 'dashboard.allocRateLegend'));
 
 const gaugeConfig = computed(() =>
   gaugeData.value.map((item) => ({
@@ -664,7 +685,9 @@ const computeUsagePercentProgressRounded = computed(() => roundPercentForProgres
 const memoryAllocPercentProgressRounded = computed(() => roundPercentForProgress(memoryAllocPercentProgress.value));
 const memoryUsagePercentProgressRounded = computed(() => roundPercentForProgress(memoryUsagePercentProgress.value));
 
-const computeAllocPercentText = computed(() => (computeAllocPercentRaw.value === undefined ? '--' : `${roundToDecimal(computeAllocPercentRaw.value, 2)}%`));
+const computeAllocPercentText = computed(() => (computeAllocPercentRaw.value === undefined || computeAllocUncounted.value === undefined
+  ? '--'
+  : `${isLowerBound(computeAllocUncounted.value) ? '≥' : ''}${roundToDecimal(computeAllocPercentRaw.value, 2)}%`));
 const computeUsagePercentText = computed(() => (computeUsagePercentRaw.value === undefined ? '--' : `${roundToDecimal(computeUsagePercentRaw.value, 2)}%`));
 const memoryAllocPercentText = computed(() => (memoryAllocPercentRaw.value === undefined ? '--' : `${roundToDecimal(memoryAllocPercentRaw.value, 2)}%`));
 const memoryUsagePercentText = computed(() => (memoryUsagePercentRaw.value === undefined ? '--' : `${roundToDecimal(memoryUsagePercentRaw.value, 2)}%`));
