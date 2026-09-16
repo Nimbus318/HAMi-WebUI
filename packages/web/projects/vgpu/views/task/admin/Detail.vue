@@ -194,34 +194,12 @@
 
   <div class="task-trend-row">
     <block-box v-for="item in lineConfigView" :key="item.key" :title="item.title">
-      <div
-        class="trend-chart"
-        :aria-busy="item.status === REQUEST_STATUS.LOADING ? 'true' : 'false'"
+      <MetricChart
+        :status="item.status"
+        :option="item.option"
+        :state-text="item.stateText"
       >
-        <template v-if="item.status === REQUEST_STATUS.LOADING">
-          <t-skeleton
-            animation="gradient"
-            :row-col="[
-              { width: '100%', height: '200px' },
-              { width: '42%', height: '16px', margin: '16px auto 0' },
-            ]"
-            class="trend-chart-skeleton"
-            aria-hidden="true"
-          />
-          <span class="trend-state-sr-only" role="status">{{ $t('common.loading') }}</span>
-        </template>
-        <VChart
-          v-else-if="item.status === REQUEST_STATUS.READY"
-          :option="getLineOptions({ data: item.data, seriesName: $t('dashboard.usageRateLegend'), animation: false })"
-          :autoresize="true"
-          class="trend-vchart"
-        />
-        <el-empty
-          v-else
-          :description="getTaskMonitoringStateText(item.status)"
-          :image-size="60"
-          class="trend-state"
-        >
+        <template #action>
           <el-button
             v-if="item.status === REQUEST_STATUS.ERROR || item.status === REQUEST_STATUS.INVALID"
             type="primary"
@@ -229,8 +207,8 @@
           >
             {{ $t('common.retry') }}
           </el-button>
-        </el-empty>
-      </div>
+        </template>
+      </MetricChart>
     </block-box>
   </div>
   </detail-page-state>
@@ -251,8 +229,9 @@ import nodeApi from '~/vgpu/api/node';
 import { timeParse, calculatePrometheusStep, roundToDecimal } from '@/utils';
 import taskApi from '~/vgpu/api/task';
 import BlockBox from '@/components/BlockBox.vue';
-import { getLineOptions } from '~/vgpu/components/config';
-import VChart from 'vue-echarts';
+import MetricChart from '~/vgpu/components/MetricChart.vue';
+import { buildTimeSeriesOptions } from '~/vgpu/metrics/chart-presets.mjs';
+import { CHART_COLORS } from '~/vgpu/metrics/chart-colors.mjs';
 import { useI18n } from 'vue-i18n';
 import { formatWorkloadName } from './workload-identity.mjs';
 import WorkloadStatus from './WorkloadStatus.vue';
@@ -553,6 +532,16 @@ const lineConfigView = computed(() =>
   taskMonitoringSeries.value.map((item) => ({
     ...item,
     title: dt(item.titleKey),
+    stateText: getTaskMonitoringStateText(item.status),
+    option: buildTimeSeriesOptions({
+      series: [
+        {
+          name: t('dashboard.usageRateLegend'),
+          data: item.data,
+          color: CHART_COLORS.single,
+        },
+      ],
+    }),
   })),
 );
 const getTaskMonitoringStateText = (status) => {
@@ -946,37 +935,6 @@ watch(
 
 .workload-split-device-link {
   color: #2f66e0;
-}
-
-.trend-chart {
-  height: 250px;
-  margin-top: 15px;
-}
-
-.trend-chart-skeleton {
-  width: 100%;
-  padding: 8px 12px 0;
-}
-
-.trend-state {
-  height: 100%;
-}
-
-.trend-state-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.trend-vchart {
-  width: 100%;
-  height: 100%;
 }
 
 .relative-gpu-tooltip-content {
