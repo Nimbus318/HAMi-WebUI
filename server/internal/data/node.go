@@ -21,6 +21,7 @@ import (
 	"vgpu/internal/provider/metax"
 	"vgpu/internal/provider/mlu"
 	"vgpu/internal/provider/nvidia"
+	"vgpu/internal/provider/util"
 )
 
 type nodeRepo struct {
@@ -103,6 +104,7 @@ func (r *nodeRepo) updateLocalNodes() {
 						NodeUid:      string(node.UID),
 						Provider:     p.GetProvider(),
 						Driver:       device.Driver,
+						MigProfiles:  bizMigProfiles(device.MigProfiles),
 						Unconfigured: device.Unconfigured,
 					})
 				}
@@ -112,6 +114,27 @@ func (r *nodeRepo) updateLocalNodes() {
 		r.nodes = n
 		r.mutex.Unlock()
 	}
+}
+
+func bizMigProfiles(profiles []util.MigProfile) []biz.MigProfile {
+	if len(profiles) == 0 {
+		return nil
+	}
+	result := make([]biz.MigProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		converted := biz.MigProfile{
+			Name:          profile.Name,
+			MemoryMB:      profile.MemoryMB,
+			SliceCount:    profile.SliceCount,
+			InstanceCount: profile.InstanceCount,
+			Core:          profile.Core,
+		}
+		for _, placement := range profile.Placements {
+			converted.Placements = append(converted.Placements, biz.MigPlacement{Start: placement.Start, Size: placement.Size})
+		}
+		result = append(result, converted)
+	}
+	return result
 }
 
 func (r *nodeRepo) init() {
