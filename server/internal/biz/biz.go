@@ -44,13 +44,24 @@ type ContainerDevice struct {
 	Priority  string
 
 	// Set by providers that interpret allocations against HAMi's device configuration.
-	Vendor                string
-	Shape                 string
-	Template              string
+	Vendor   string
+	Shape    string
+	Template string
+	// Where a MIG device sits in the GPU's placement space; Size 0 when absent.
+	MigPlacement          MigPlacement
 	CoreAllocationUnknown bool
 	CoreReason            string
 	Ascend                *AscendFacts
 }
+
+// How HAMi divided a device for one container.
+const (
+	SplitShapeWhole    = "whole"
+	SplitShapeTemplate = "template"
+	SplitShapeSoft     = "soft"
+	SplitShapeMig      = "mig"
+	SplitShapeUnknown  = "unknown"
+)
 
 type AscendFacts struct {
 	AnnotatedCore int32
