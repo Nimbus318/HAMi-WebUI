@@ -136,7 +136,7 @@ const useRangeVector = (
   };
 
   watch(
-    () => times?.value,
+    [() => times?.value, () => configs.map(({ query }) => safeParseQuery(query)).join('\n')],
     () => fetchData(),
     { immediate: true },
   );
