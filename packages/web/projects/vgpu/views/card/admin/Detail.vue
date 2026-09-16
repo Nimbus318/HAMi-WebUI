@@ -37,6 +37,10 @@
               <div class="basic-info-subtitle">{{ dt('card.model') }}</div>
             </div>
             <div class="basic-info-card">
+              <div class="basic-info-title">{{ splitModeText }}</div>
+              <div class="basic-info-subtitle">{{ $t('card.splitMode.label') }}</div>
+            </div>
+            <div class="basic-info-card">
               <div class="basic-info-title">
                 {{ basicTemperatureText }}
               </div>
@@ -361,6 +365,7 @@ import { formatOptionalTelemetry } from './optional-telemetry-display.mjs';
 import UnconfiguredTag from './components/UnconfiguredTag.vue';
 import deviceConfigApi from '~/vgpu/api/deviceConfig';
 import { deviceWording, isNpuVendor } from '~/vgpu/components/device-copy.mjs';
+import { getSplitModeKey } from '~/vgpu/components/split-mode.mjs';
 import { buildAllocationOptions, findAscendModel, getDeviceConfigStateKey } from './device-config-display.mjs';
 import NpuAllocationOption from './components/NpuAllocationOption.vue';
 
@@ -385,6 +390,10 @@ const isDetailReady = computed(
   () => detailStatus.value === REQUEST_STATUS.READY,
 );
 const dt = (key) => deviceWording(t(key), isDetailReady.value ? detail.value?.vendor : '');
+const splitModeText = computed(() => {
+  const key = isDetailReady.value ? getSplitModeKey(detail.value?.mode) : '';
+  return key ? t(key) : '--';
+});
 const detailCardUuid = computed(() =>
   isDetailReady.value ? detail.value.uuid : undefined,
 );

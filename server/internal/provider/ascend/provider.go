@@ -117,6 +117,7 @@ func decodeRegisteredDevices(node *corev1.Node, snapshot *devicecatalog.Snapshot
 		key       string
 	}
 	candidates := make(map[string]candidate)
+	mode := NodeSplitMode(node)
 	words := map[string]bool{}
 	for _, word := range snapshot.AscendCommonWords() {
 		if _, ok := node.Annotations[registerAnnotationPrefix+word]; ok {
@@ -155,6 +156,7 @@ func decodeRegisteredDevices(node *corev1.Node, snapshot *devicecatalog.Snapshot
 			// whole-card percentage. Keep the inventory denominator consistent
 			// with template shares and hami-core mode.
 			device.Devcore = 100
+			device.Mode = mode
 			device.Unconfigured = snapshot.Loaded() && !configured
 			incoming := candidate{device: device, reported: reported, hasReport: hasReport, key: annotationKey}
 			existing, duplicate := candidates[device.ID]

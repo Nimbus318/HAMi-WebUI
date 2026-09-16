@@ -52,6 +52,15 @@ type ContainerDevice struct {
 	Ascend                *AscendFacts
 }
 
+// How HAMi divided a device for one container.
+const (
+	SplitShapeWhole    = "whole"
+	SplitShapeTemplate = "template"
+	SplitShapeSoft     = "soft"
+	SplitShapeMig      = "mig"
+	SplitShapeUnknown  = "unknown"
+)
+
 type AscendFacts struct {
 	AnnotatedCore int32
 	Template      string

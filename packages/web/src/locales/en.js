@@ -312,6 +312,12 @@ export default {
     hardwareError: 'Hardware Error',
     unmanaged: 'Unmanaged',
     unconfigured: 'Not configured',
+    splitMode: {
+      label: 'Split Mode',
+      'hami-core': 'Soft split (hami-core)',
+      mig: 'MIG',
+      template: 'Template split',
+    },
     unconfiguredTip: "HAMi's device configuration does not list this model, so the scheduler will not assign it to new workloads and it adds no allocatable capacity.",
     deviceConfig: {
       title: 'NPU Specification',
@@ -452,6 +458,8 @@ export default {
         whole: 'Whole card',
         template: 'Template split',
         templateNamed: 'Template {template}',
+        mig: 'MIG',
+        migNamed: 'MIG {template}',
         soft: 'Soft split (hami-core)',
         unknown: 'Undetermined',
       },

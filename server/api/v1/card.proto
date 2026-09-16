@@ -64,6 +64,7 @@ message GPUReply {
   int32 memory_total = 9;
   string node_uid = 10;
   bool health = 11;
+  // How the plugin divides the device: hami-core, mig or template.
   string mode = 12;
   optional bool core_used_known = 13;
   // Registered but absent from HAMi's device configuration.

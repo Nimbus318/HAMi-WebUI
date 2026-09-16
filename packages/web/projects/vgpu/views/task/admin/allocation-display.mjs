@@ -1,4 +1,4 @@
-export const ALLOCATION_SHAPES = ['whole', 'template', 'soft', 'unknown'];
+export const ALLOCATION_SHAPES = ['whole', 'template', 'soft', 'mig', 'unknown'];
 export const CORES_UNKNOWN_REASONS = [
   'catalog_unavailable',
   'model_not_configured',
@@ -11,8 +11,8 @@ export const CORES_UNKNOWN_REASONS = [
 // undefined for allocations the server does not interpret.
 export const getAllocationShapeCopy = ({ allocationShape, template } = {}) => {
   if (!ALLOCATION_SHAPES.includes(allocationShape)) return undefined;
-  if (allocationShape === 'template' && template) {
-    return { key: 'task.allocation.shape.templateNamed', params: { template } };
+  if (template && (allocationShape === 'template' || allocationShape === 'mig')) {
+    return { key: `task.allocation.shape.${allocationShape}Named`, params: { template } };
   }
   return { key: `task.allocation.shape.${allocationShape}`, params: {} };
 };
