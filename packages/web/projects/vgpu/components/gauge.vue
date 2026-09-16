@@ -89,6 +89,9 @@
       <span v-else-if="status === 'no-capacity'">{{
         $t('dashboard.metricNoCapacity')
       }}</span>
+      <span v-else-if="status === 'unknown-shares'">{{
+        $t('dashboard.metricUnknownShares', { count: unknownShares })
+      }}</span>
       <span v-else>{{ $t('dashboard.metricNoData') }}</span>
     </div>
     <span
@@ -117,6 +120,7 @@ const props = defineProps({
   usedPrecision: { type: Number, default: 1 },
   totalPrecision: { type: Number, default: 0 },
   status: { type: String, default: 'loading' },
+  unknownShares: { type: Number, default: 0 },
   total: { type: [Number, String], default: 0 },
   used: { type: [Number, String], default: 0 },
   unit: { type: String, default: '' },

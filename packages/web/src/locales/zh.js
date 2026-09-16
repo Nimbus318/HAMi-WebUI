@@ -152,6 +152,7 @@ export default {
     metricNoData: '暂无指标数据',
     metricInvalid: '指标值无效',
     metricNoCapacity: '无可用容量',
+    metricUnknownShares: '{count} 个分配的算力占比未知',
     metricQueryFailed: '查询失败',
     deviceAverage: '上报设备平均',
     vgpuSlotUnit: '槽位',

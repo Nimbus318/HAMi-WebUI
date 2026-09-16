@@ -153,6 +153,7 @@ export default {
     metricNoData: 'No metric data',
     metricInvalid: 'Invalid metric value',
     metricNoCapacity: 'No available capacity',
+    metricUnknownShares: 'Unknown for {count} allocations',
     metricQueryFailed: 'Query failed',
     deviceAverage: 'Reporting-device average',
     vgpuSlotUnit: 'slots',
