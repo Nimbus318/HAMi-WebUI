@@ -112,13 +112,26 @@
             </div>
             <div v-if="allocationShapeText" class="summary-item">
               <span class="summary-item-label">{{ $t('task.allocation.label') }}</span>
-              <span class="summary-item-value">{{ allocationShapeText }}</span>
+              <span class="summary-item-value summary-item-allocation">
+                <svg-icon v-if="allocationIcon" :icon="allocationIcon" aria-hidden="true" />
+                {{ allocationShapeText }}
+              </span>
             </div>
           </div>
         </div>
       </div>
     </block-box>
   </div>
+
+  <block-box v-if="deviceSplits.length" :title="$t('card.split.title')" class="workload-split">
+    <div v-for="split in deviceSplits" :key="split.uuid" class="workload-split-device">
+      <div class="workload-split-device-title">
+        <svg-icon v-if="allocationIcon" :icon="allocationIcon" aria-hidden="true" />
+        <RouterLink class="workload-split-device-link" :to="`/accelerators/${split.uuid}`">{{ split.uuid }}</RouterLink>
+      </div>
+      <DeviceSplitLayout :device="split.device" :containers="split.containers" :highlight="splitHighlight" />
+    </div>
+  </block-box>
 
   <block-box :title="$t('task.detail.resourceOverview')" class="workload-overview">
     <div class="row">
@@ -255,6 +268,8 @@ import DetailPageState from '~/vgpu/components/DetailPageState.vue';
 import MetricHelp from '~/vgpu/components/MetricHelp.vue';
 import { deviceWording } from '~/vgpu/components/device-copy.mjs';
 import { getAllocationShapeCopy, getCoresUnknownReasonKey, isUnreservedSoftSplit } from './allocation-display.mjs';
+import { getSplitIcon } from '~/vgpu/components/split-mode.mjs';
+import DeviceSplitLayout from '~/vgpu/views/card/admin/components/DeviceSplitLayout.vue';
 import {
   GPU_UUID_TOOLTIP_STYLE,
   LONG_TEXT_TOOLTIP_STYLE,
@@ -331,6 +346,30 @@ const allocationShapeText = computed(() => {
   const copy = detailStatus.value === REQUEST_STATUS.READY ? getAllocationShapeCopy(detail.value) : undefined;
   return copy ? t(copy.key, copy.params) : '';
 });
+const deviceSplits = ref([]);
+const splitHighlight = computed(() => ({ podUid: detail.value?.podUid, container: detail.value?.name }));
+let workloadSplitGeneration = 0;
+watch([() => detail.value?.podUid, safeDeviceIds], async ([podUid, uuids]) => {
+  const generation = ++workloadSplitGeneration;
+  deviceSplits.value = [];
+  if (!podUid || !uuids.length) return;
+  const loaded = [];
+  for (const uuid of uuids.slice(0, 4)) {
+    try {
+      const [card, workloads] = await Promise.all([
+        cardApi.getCardDetail({ uid: uuid }),
+        taskApi.getWorkloads({ filters: { deviceId: uuid }, page: 1, pageSize: 100 }),
+      ]);
+      loaded.push({ uuid, device: card || { uuid }, containers: Array.isArray(workloads?.items) ? workloads.items : [] });
+    } catch {
+      // A device that cannot be read is left out rather than shown half-empty.
+    }
+  }
+  if (generation === workloadSplitGeneration) deviceSplits.value = loaded;
+}, { immediate: true });
+const allocationIcon = computed(() => (
+  detailStatus.value === REQUEST_STATUS.READY ? getSplitIcon(detail.value?.allocationShape) : ''
+));
 const coresUnknownReason = computed(() => {
   const key = detailStatus.value === REQUEST_STATUS.READY ? getCoresUnknownReasonKey(detail.value) : '';
   return key ? t(key) : '';
@@ -731,6 +770,18 @@ watch(
     min-width: 0;
   }
 
+  .summary-item-allocation {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+  }
+
   .summary-item-label {
     width: 120px;
     color: #939ea9;
@@ -867,6 +918,33 @@ watch(
     font-size: 12px;
     line-height: 20px;
   }
+}
+
+.workload-split {
+  margin-top: 16px;
+  padding: 20px;
+}
+
+.workload-split-device + .workload-split-device {
+  margin-top: 16px;
+}
+
+.workload-split-device-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #324558;
+  font-size: 13px;
+  font-weight: 500;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.workload-split-device-link {
+  color: #2f66e0;
 }
 
 .trend-chart {
