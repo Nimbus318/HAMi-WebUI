@@ -85,6 +85,12 @@ const buildAllocationQueries = ({
   };
 };
 
+// Allocations whose compute share HAMi does not state. Compute allocation is
+// suppressed while any exists, so a page can say how many caused it.
+export const buildUnknownComputeShareQuery = ({ selector = '' } = {}) => (
+  `count(${metricSeries(METRICS.computeAllocationKnown, selector)} == 0)`
+);
+
 export const buildComputeAllocationQueries = (options = {}) => {
   const queries = buildAllocationQueries({
     allocatedMetric: METRICS.computeAllocated,

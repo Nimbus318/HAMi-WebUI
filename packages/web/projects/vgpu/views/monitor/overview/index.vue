@@ -207,7 +207,7 @@
                 style="height: 250px"
               />
               <div v-else class="overview-state overview-state--chart">
-                {{ getStateText(rangeConfig[0].status) }}
+                {{ getStateText(rangeConfig[0].status, true, rangeConfig[0].unknownShares) }}
               </div>
               <div
                 v-if="rangeConfig[0].refreshing || rangeConfig[0].refreshError || rangeConfig[0].partialStatusText"
@@ -258,7 +258,7 @@
                 style="height: 250px"
               />
               <div v-else class="overview-state overview-state--chart">
-                {{ getStateText(rangeConfig[1].status) }}
+                {{ getStateText(rangeConfig[1].status, true, rangeConfig[1].unknownShares) }}
               </div>
               <div
                 v-if="rangeConfig[1].refreshing || rangeConfig[1].refreshError || rangeConfig[1].partialStatusText"
@@ -404,7 +404,7 @@ import {
   createNodeWorkloadDistributionQuery,
   createOverviewGaugeConfigs,
 } from './metric-config.mjs';
-import { buildClusterAllocatableQueries } from '~/vgpu/metrics/query-contract.mjs';
+import { buildClusterAllocatableQueries, buildUnknownComputeShareQuery } from '~/vgpu/metrics/query-contract.mjs';
 import {
   createRequestState,
   rejectRequest,
@@ -414,9 +414,11 @@ import {
 } from '@/hooks/request-state.mjs';
 import {
   aggregateStatuses,
+  applyUnknownShareStatus,
   getPartialRangeStates,
   stateTextKey,
 } from './overview-state.mjs';
+import { readReadyMetricField } from '~/vgpu/hooks/instant-vector-state.mjs';
 import { isNodeSchedulingEligible } from '~/vgpu/views/node/node-status.mjs';
 
 const router = useRouter();
@@ -573,8 +575,15 @@ const clusterResourceConfig = useInstantVector([
   },
 ]);
 
+const unknownShareMetric = useInstantVector([{ query: buildUnknownComputeShareQuery() }]);
+const unknownShares = computed(() => {
+  const value = readReadyMetricField(unknownShareMetric.value[0], 'count');
+  const count = Number(value);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+});
+
 const cardGaugeConfig = computed(() => {
-  return _cardGaugeConfig.value.map((item) => ({
+  return applyUnknownShareStatus(_cardGaugeConfig.value, unknownShares.value).map((item) => ({
     ...item,
     title: t(item.titleKey),
     description: t(item.descriptionKey),
@@ -758,27 +767,31 @@ const { data: rangeSeries } = useRangeVector(
 const rangeConfig = computed(() => {
   const translated = getRangeConfigInit(t);
   return translated.map((section, sectionIndex) => {
-    const dataSource = section.dataSource.map((series, seriesIndex) => {
-      const state = rangeSeries.value.find(
-        (item) =>
-          item.sectionIndex === sectionIndex && item.seriesIndex === seriesIndex,
-      );
-      return {
-        ...series,
-        data: state?.data || [],
-        status: state?.status || REQUEST_STATUS.LOADING,
-        refreshing: state?.refreshing || false,
-        refreshError: state?.refreshError || null,
-      };
-    });
+    const dataSource = applyUnknownShareStatus(
+      section.dataSource.map((series, seriesIndex) => {
+        const state = rangeSeries.value.find(
+          (item) =>
+            item.sectionIndex === sectionIndex && item.seriesIndex === seriesIndex,
+        );
+        return {
+          ...series,
+          data: state?.data || [],
+          status: state?.status || REQUEST_STATUS.LOADING,
+          refreshing: state?.refreshing || false,
+          refreshError: state?.refreshError || null,
+        };
+      }),
+      unknownShares.value,
+    );
     const status = aggregateStatuses(dataSource);
     const partialStatusText = getPartialRangeStates(dataSource)
-      .map((item) => `${item.name}: ${t(stateTextKey(item.status))}`)
+      .map((item) => `${item.name}: ${t(stateTextKey(item.status), { count: item.unknownShares ?? 0 })}`)
       .join(' · ');
     return {
       ...section,
       dataSource,
       status,
+      unknownShares: dataSource.find((item) => item.unknownShares)?.unknownShares || 0,
       refreshing: dataSource.some((item) => item.refreshing),
       refreshError: dataSource.find((item) => item.refreshError)?.refreshError || null,
       partialStatusText,
@@ -786,8 +799,8 @@ const rangeConfig = computed(() => {
   });
 });
 
-const getStateText = (status, metric = true) =>
-  t(stateTextKey(status, { metric }));
+const getStateText = (status, metric = true, count = 0) =>
+  t(stateTextKey(status, { metric }), { count });
 
 onMounted(() => {
   fetchNodeWorkloadTop5();
