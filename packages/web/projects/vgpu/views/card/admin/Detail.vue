@@ -38,6 +38,13 @@
             </div>
             <div class="basic-info-card">
               <div class="basic-info-title">
+                <svg-icon v-if="splitModeIcon" :icon="splitModeIcon" class="split-mode-icon" aria-hidden="true" />
+                {{ splitModeText }}
+              </div>
+              <div class="basic-info-subtitle">{{ $t('card.splitMode.label') }}</div>
+            </div>
+            <div class="basic-info-card">
+              <div class="basic-info-title">
                 {{ basicTemperatureText }}
               </div>
               <div class="basic-info-subtitle">{{ $t('card.detail.gpuTemperature') }}</div>
@@ -51,6 +58,10 @@
           </div>
         </div>
       </div>
+    </block-box>
+
+    <block-box class="device-split-block" :title="$t('card.split.title')">
+      <DeviceSplitLayout :device="detail" :containers="cardContainers" />
     </block-box>
 
     <block-box v-if="npuSpecVisible" class="npu-spec-block" :title="$t('card.deviceConfig.title')">
@@ -361,8 +372,11 @@ import { formatOptionalTelemetry } from './optional-telemetry-display.mjs';
 import UnconfiguredTag from './components/UnconfiguredTag.vue';
 import deviceConfigApi from '~/vgpu/api/deviceConfig';
 import { deviceWording, isNpuVendor } from '~/vgpu/components/device-copy.mjs';
+import { getSplitIcon, getSplitModeKey } from '~/vgpu/components/split-mode.mjs';
 import { buildAllocationOptions, findAscendModel, getDeviceConfigStateKey } from './device-config-display.mjs';
 import NpuAllocationOption from './components/NpuAllocationOption.vue';
+import DeviceSplitLayout from './components/DeviceSplitLayout.vue';
+import taskApi from '~/vgpu/api/task';
 
 const route = useRoute();
 const { t } = useI18n();
@@ -385,9 +399,27 @@ const isDetailReady = computed(
   () => detailStatus.value === REQUEST_STATUS.READY,
 );
 const dt = (key) => deviceWording(t(key), isDetailReady.value ? detail.value?.vendor : '');
+const splitModeText = computed(() => {
+  const key = isDetailReady.value ? getSplitModeKey(detail.value?.mode) : '';
+  return key ? t(key) : '--';
+});
+const splitModeIcon = computed(() => (isDetailReady.value ? getSplitIcon(detail.value?.mode) : ''));
 const detailCardUuid = computed(() =>
   isDetailReady.value ? detail.value.uuid : undefined,
 );
+const cardContainers = ref([]);
+let splitGeneration = 0;
+watch(detailCardUuid, async (uuid) => {
+  const generation = ++splitGeneration;
+  cardContainers.value = [];
+  if (!uuid) return;
+  try {
+    const result = await taskApi.getWorkloads({ filters: { deviceId: uuid }, page: 1, pageSize: 100 });
+    if (generation === splitGeneration) cardContainers.value = Array.isArray(result?.items) ? result.items : [];
+  } catch {
+    if (generation === splitGeneration) cardContainers.value = [];
+  }
+}, { immediate: true });
 const headerName = computed(() =>
   isDetailReady.value ? detail.value.uuid : routeCardUuid.value || '',
 );
@@ -867,6 +899,11 @@ watch([times, detailCardUuid], fetchLineData, { immediate: true });
     line-height: 20px;
   }
 
+.split-mode-icon {
+  width: 18px;
+  height: 18px;
+}
+
 .gpu-type-icon {
   width: 16px;
   height: 16px;
@@ -1088,6 +1125,11 @@ watch([times, detailCardUuid], fetchLineData, { immediate: true });
 
 .resource-overview-block {
   margin-bottom: 24px;
+  box-shadow: none;
+}
+
+.device-split-block {
+  margin-bottom: 16px;
   box-shadow: none;
 }
 
