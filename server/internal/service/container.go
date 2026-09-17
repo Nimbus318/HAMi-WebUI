@@ -177,6 +177,7 @@ func (s *ContainerService) GetAllContainers(ctx context.Context, req *pb.GetAllC
 		containerReply.AllocatedCoresKnown = &allocatedCoresKnown
 		containerReply.AllocationShape, containerReply.Template, containerReply.AllocatedCoresReason = describeAllocation(selected)
 		containerReply.Vendor = sharedVendor(vendors)
+		containerReply.Devices = containerDevices(selected, containerReply.DeviceIds)
 		containerReply.CreateTime = container.CreateTime.Format(time.RFC3339)
 		res.Items = append(res.Items, containerReply)
 	}
@@ -256,8 +257,37 @@ func (s *ContainerService) GetContainer(ctx context.Context, req *pb.GetContaine
 	ctrReply.AllocatedCoresKnown = &allocatedCoresKnown
 	ctrReply.AllocationShape, ctrReply.Template, ctrReply.AllocatedCoresReason = describeAllocation(selected)
 	ctrReply.Vendor = sharedVendor(vendors)
+	ctrReply.Devices = containerDevices(selected, ctrReply.DeviceIds)
 	ctrReply.CreateTime = container.CreateTime.Format(time.RFC3339)
 	return ctrReply, nil
+}
+
+// containerDevices reports each allocated device, so a page can place the
+// allocation on the device it shares with other workloads.
+func containerDevices(devices biz.ContainerDevices, ids []string) []*pb.ContainerDevice {
+	result := make([]*pb.ContainerDevice, 0, len(devices))
+	for i, device := range devices {
+		id := device.UUID
+		if i < len(ids) {
+			id = ids[i]
+		}
+		known := !device.CoreAllocationUnknown
+		item := &pb.ContainerDevice{
+			Id:                  id,
+			Type:                device.Type,
+			AllocatedCores:      device.Usedcores,
+			AllocatedCoresKnown: &known,
+			AllocatedMem:        device.Usedmem,
+			AllocationShape:     device.Shape,
+			Template:            device.Template,
+		}
+		if device.MigPlacement.Size > 0 {
+			start, size := device.MigPlacement.Start, device.MigPlacement.Size
+			item.MigStart, item.MigSize = &start, &size
+		}
+		result = append(result, item)
+	}
+	return result
 }
 
 func sharedVendor(vendors []string) string {
