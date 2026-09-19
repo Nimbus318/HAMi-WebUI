@@ -1,12 +1,20 @@
 name: Fork Images
 
-# Manually build any branch/tag/sha of this fork and publish the images to this
-# fork's own GHCR namespace, so the device lab can pull them without building
-# anything locally. Upstream CI only publishes on push to main and on tags, so
-# pre-merge verification has no image otherwise.
+# Build any ref of this fork on demand and publish to this fork's own GHCR
+# namespace, so the device lab pulls images instead of the laptop cross-building
+# linux/amd64 under emulation. Upstream CI publishes only on push to main and on
+# tags — pull requests build with push disabled, because fork PRs cannot hold
+# registry credentials.
 #
-# Usage:
-#   gh workflow run fork-images.yaml -f ref=<branch|tag|sha> [-f tag=<image tag>]
+#   # 1.x layout (main): separate frontend and backend images
+#   gh workflow run fork-images.yaml -f ref=fix/my-branch
+#
+#   # 2.0 layout (feat/split-mode and friends): one unified image
+#   gh workflow run fork-images.yaml -f ref=feat/split-mode -f targets=app
+#
+#   # anything else: name the image and point at its Dockerfile
+#   gh workflow run fork-images.yaml -f ref=my-branch \
+#     -f targets=hami-webui-probe -f context=./tools -f dockerfile=tools/Dockerfile
 #
 # The repository guard keeps this inert if the file ever reaches upstream.
 
@@ -17,9 +25,21 @@ on:
         description: "Branch, tag or SHA to build"
         required: true
         default: main
+      targets:
+        description: "Comma-separated: fe, be, app, or a custom image name"
+        required: false
+        default: fe,be
       tag:
         description: "Image tag (default: sanitized ref)"
         required: false
+      context:
+        description: "Build context for a custom target"
+        required: false
+        default: "."
+      dockerfile:
+        description: "Dockerfile for a custom target"
+        required: false
+        default: Dockerfile
       platforms:
         description: "Target platforms"
         required: false
@@ -30,33 +50,74 @@ permissions:
   packages: write
 
 jobs:
-  build:
+  plan:
     if: github.repository == 'Nimbus318/HAMi-WebUI'
-    name: ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - name: Resolve targets and tag
+        id: plan
+        env:
+          TARGETS: ${{ inputs.targets }}
+          CUSTOM_CONTEXT: ${{ inputs.context }}
+          CUSTOM_DOCKERFILE: ${{ inputs.dockerfile }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+
+          tag="$INPUT_TAG"
+          if [ -z "$tag" ]; then
+            # Branch names may hold "/" and other characters an image tag cannot.
+            tag="$(printf '%s' "$INPUT_REF" | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-120)"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          entries=""
+          IFS=','
+          for t in $TARGETS; do
+            t="$(printf '%s' "$t" | tr -d '[:space:]')"
+            [ -n "$t" ] || continue
+            case "$t" in
+              fe)  image=hami-webui-fe-oss; ctx=.;        dockerfile=Dockerfile ;;
+              be)  image=hami-webui-be-oss; ctx=./server; dockerfile=server/Dockerfile ;;
+              app) image=hami-webui;        ctx=.;        dockerfile=Dockerfile ;;
+              *)   image="$t";              ctx="$CUSTOM_CONTEXT"; dockerfile="$CUSTOM_DOCKERFILE" ;;
+            esac
+            entries="$entries$(jq -cn --arg n "$t" --arg i "$image" --arg c "$ctx" --arg d "$dockerfile" \
+              '{name:$n, image:$i, context:$c, dockerfile:$d}')"$'\n'
+          done
+          unset IFS
+
+          matrix="$(printf '%s' "$entries" | jq -sc '{include: .}')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Build plan"
+            echo ""
+            echo "- ref: \`$INPUT_REF\`"
+            echo "- tag: \`$tag\`"
+            printf '%s' "$entries" | jq -r '"- `\(.image)` from `\(.dockerfile)` (context `\(.context)`)"'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: plan
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - component: fe
-            context: .
-          - component: be
-            context: ./server
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - name: Checkout ${{ inputs.ref }}
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Prepare image tag
+      - name: Resolve image reference
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          tag="${{ inputs.tag }}"
-          if [ -z "$tag" ]; then
-            # Branch names may contain "/" and other characters a tag cannot hold.
-            tag="$(printf '%s' "${{ inputs.ref }}" | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-120)"
-          fi
-          echo "IMAGE=ghcr.io/${owner}/hami-webui-${{ matrix.component }}-oss:${tag}" >> "$GITHUB_ENV"
+          echo "IMAGE=ghcr.io/${owner}/${{ matrix.image }}:${{ needs.plan.outputs.tag }}" >> "$GITHUB_ENV"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -75,11 +136,12 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           platforms: ${{ inputs.platforms }}
           push: true
           tags: ${{ env.IMAGE }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
       - name: Summary
         run: echo "Pushed \`${IMAGE}\`" >> "$GITHUB_STEP_SUMMARY"
