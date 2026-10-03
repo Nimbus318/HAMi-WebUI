@@ -262,93 +262,31 @@
 
     <TrendTimeFilter v-model="times" class="card-trend-filter" />
     <div class="line-box">
-      <block-box :title="dt('dashboard.gpuComputeAllocUsageTrend')">
-        <div class="trend-chart">
-          <VChart
-            :option="
-              {
-                ...getRangeOptions([
-                  {
-                    name: computeAllocLegend,
-                    data: computeTrend[0]?.data,
-                    itemStyle: {
-                      color: '#5B8FF9',
-                      borderColor: '#5B8FF9',
-                    },
-                    lineStyle: {
-                      width: 3,
-                      color: '#5B8FF9',
-                    },
-                  },
-                  {
-                    name: t('dashboard.usageRateLegend'),
-                    data: computeTrend[1]?.data,
-                    itemStyle: {
-                      color: '#42C090',
-                      borderColor: '#42C090',
-                    },
-                    lineStyle: {
-                      width: 3,
-                      color: '#42C090',
-                    },
-                  },
-                ]),
-                animation: false,
-              }
-            "
-            :autoresize="true"
-          />
-        </div>
-        <p v-if="computeTrend[0]?.refreshError" class="trend-refresh-status" role="status">
-          {{ $t('common.refreshFailedShowingPreviousResult') }}
-        </p>
-      </block-box>
-      <block-box :title="dt('dashboard.gpuMemAllocUsageTrend')">
-        <div class="trend-chart">
-          <VChart
-            :option="
-              {
-                ...getRangeOptions([
-                  {
-                    name: t('dashboard.allocRateLegend'),
-                    data: memoryTrend[0]?.data,
-                    itemStyle: {
-                      color: '#5B8FF9',
-                      borderColor: '#5B8FF9',
-                    },
-                    lineStyle: {
-                      width: 3,
-                      color: '#5B8FF9',
-                    },
-                  },
-                  {
-                    name: t('dashboard.usageRateLegend'),
-                    data: memoryTrend[1]?.data,
-                    itemStyle: {
-                      color: '#42C090',
-                      borderColor: '#42C090',
-                    },
-                    lineStyle: {
-                      width: 3,
-                      color: '#42C090',
-                    },
-                  },
-                ]),
-                animation: false,
-              }
-            "
-            :autoresize="true"
-          />
-        </div>
-        <p v-if="memoryTrend[0]?.refreshError" class="trend-refresh-status" role="status">
-          {{ $t('common.refreshFailedShowingPreviousResult') }}
-        </p>
+      <block-box
+        v-for="section in trendSections"
+        :key="section.key"
+        :title="section.title"
+      >
+        <MetricChart
+          :status="section.status"
+          :option="section.option"
+          :note="section.note"
+          :state-text="section.stateText"
+          :refreshing="section.refreshing"
+          :refresh-error="Boolean(section.refreshError)"
+        />
       </block-box>
 
-      <block-box :title="title" v-for="{ title, data, unit, seriesNameKey } in lineToolsView" :key="title">
-        <div class="trend-chart">
-          <VChart :option="getLineOptions2({ data, unit, seriesName: t(seriesNameKey), animation: false })" :autoresize="true" />
-        </div>
+      <block-box
+        v-for="item in lineToolsView"
+        :key="item.titleKey"
+        :title="item.title"
+      >
+        <MetricChart
+          :status="item.status"
+          :option="item.option"
+          :state-text="item.stateText"
+        />
       </block-box>
     </div>
     </detail-page-state>
@@ -378,13 +316,14 @@ import {
 import useDetailResource from '~/vgpu/hooks/useDetailResource.js';
 import { classifyDetailPayload } from '~/vgpu/hooks/detail-resource-state.mjs';
 import { REQUEST_STATUS } from '@/hooks/request-state.mjs';
-import VChart from 'vue-echarts';
 import cardApi from '~/vgpu/api/card';
 import nodeApi from '~/vgpu/api/node';
 import WorkloadSemiProgress from './components/WorkloadSemiProgress.vue';
 import { timeParse, calculatePrometheusStep, roundToDecimal, getResourceColor } from '@/utils';
-import { getLineOptions as getLineOptions2 } from '~/vgpu/components/config';
-import { getRangeOptions } from '../../monitor/overview/getOptions';
+import MetricChart from '~/vgpu/components/MetricChart.vue';
+import { buildTimeSeriesOptions } from '~/vgpu/metrics/chart-presets.mjs';
+import { CHART_COLORS } from '~/vgpu/metrics/chart-colors.mjs';
+import { stateTextKey, summarizeRangeSeries } from '~/vgpu/metrics/metric-state.mjs';
 import { useI18n } from 'vue-i18n';
 import {
   buildComputeAllocationQueries,
@@ -763,17 +702,57 @@ const lineTools = ref([
   },
 ]);
 
+const lineLoading = ref(true);
+
 const lineToolsView = computed(() =>
-  lineTools.value.map((item) => ({
-    ...item,
-    title: dt(item.titleKey),
-  })),
+  lineTools.value.map((item) => {
+    let status = item.data?.length ? REQUEST_STATUS.READY : REQUEST_STATUS.MISSING;
+    if (lineLoading.value) status = REQUEST_STATUS.LOADING;
+    else if (item.failed) status = REQUEST_STATUS.ERROR;
+    return {
+      ...item,
+      title: dt(item.titleKey),
+      status,
+      stateText: t(stateTextKey(status)),
+      option: buildTimeSeriesOptions({
+        series: [
+          {
+            name: t(item.seriesNameKey),
+            data: item.data,
+            color: CHART_COLORS.single,
+          },
+        ],
+        unit: item.unit,
+        digits: 1,
+      }),
+    };
+  }),
 );
+
+const trendSection = (key, title, [allocation, usage], allocationName) => {
+  const series = [
+    { ...allocation, name: allocationName, color: CHART_COLORS.allocation },
+    { ...usage, name: t('dashboard.usageRateLegend'), color: CHART_COLORS.usage },
+  ];
+  const summary = summarizeRangeSeries(series, t);
+  return {
+    key,
+    title,
+    ...summary,
+    stateText: t(stateTextKey(summary.status)),
+    option: buildTimeSeriesOptions({ series }),
+  };
+};
+const trendSections = computed(() => [
+  trendSection('compute', dt('dashboard.gpuComputeAllocUsageTrend'), computeTrend.value, computeAllocLegend.value),
+  trendSection('memory', dt('dashboard.gpuMemAllocUsageTrend'), memoryTrend.value, t('dashboard.allocRateLegend')),
+]);
 
 let lineRequestGeneration = 0;
 const resetLineData = () => {
   lineTools.value.forEach((item) => {
     item.data = [];
+    item.failed = false;
     item.percent = undefined;
   });
 };
@@ -783,8 +762,10 @@ const fetchLineData = async () => {
   const uuid = detailCardUuid.value;
   if (!uuid) {
     resetLineData();
+    lineLoading.value = false;
     return;
   }
+  lineLoading.value = true;
 
   const requests = lineTools.value.flatMap((item, index) => {
     const query = renderPromQLTemplate(item.query, { device_uuid: uuid });
@@ -800,10 +781,12 @@ const fetchLineData = async () => {
       .then((res) => {
         if (generation !== lineRequestGeneration) return;
         lineTools.value[index].data = res.data?.[0]?.values || [];
+        lineTools.value[index].failed = false;
       })
       .catch(() => {
         if (generation !== lineRequestGeneration) return;
         lineTools.value[index].data = [];
+        lineTools.value[index].failed = true;
       });
 
     const instantRequest = cardApi
@@ -821,6 +804,7 @@ const fetchLineData = async () => {
   });
 
   await Promise.all(requests);
+  if (generation === lineRequestGeneration) lineLoading.value = false;
 };
 
 let nodeEnrichmentGeneration = 0;
@@ -1157,11 +1141,6 @@ watch([times, detailCardUuid], fetchLineData, { immediate: true });
   color: #324558;
 }
 
-.trend-chart {
-  height: 100%;
-  margin-top: 0;
-}
-
 .line-box {
   display: flex;
   flex-wrap: wrap;
@@ -1170,16 +1149,8 @@ watch([times, detailCardUuid], fetchLineData, { immediate: true });
   > .home-block {
     flex: 1 1 calc(50% - 10px);
     min-width: 0;
-    height: 320px;
     padding: 16px 20px;
     margin-bottom: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  > .home-block :deep(.home-block-content) {
-    flex: 1;
-    min-height: 0;
   }
 }
 
@@ -1195,13 +1166,6 @@ watch([times, detailCardUuid], fetchLineData, { immediate: true });
 .resource-overview-block {
   margin-bottom: 16px;
   box-shadow: none;
-}
-
-.trend-refresh-status {
-  margin: 4px 0 0;
-  color: #d54941;
-  font-size: 12px;
-  line-height: 18px;
 }
 
 .resource-card-sr-only {
