@@ -1,146 +1,45 @@
-name: PR Frontend Checks
-
+name: Temporary PR 328 calendar diagnosis
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-
 permissions:
   contents: read
-  pull-requests: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  # Run when the Vue app, Go Web entry, or their build and contract inputs
-  # change.
-  changes:
+  trace:
     runs-on: ubuntu-latest
-    outputs:
-      frontend: ${{ github.event_name != 'pull_request' || steps.filter.outputs.frontend == 'true' }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        id: filter
-        if: github.event_name == 'pull_request'
-        with:
-          filters: |
-            frontend:
-              - 'brand/svg/**'
-              - 'packages/**'
-              - 'package.json'
-              - '.eslintignore'
-              - '.eslintrc.js'
-              - '.browserslistrc'
-              - '.dockerignore'
-              - '.node-version'
-              - 'Dockerfile'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - 'server/.go-version'
-              - 'server/Makefile'
-              - 'server/cmd/web-entry/**'
-              - 'server/go.mod'
-              - 'server/go.sum'
-              - 'server/internal/webentry/**'
-              - 'scripts/precompress-web-assets.mjs'
-              - 'scripts/verify-source-language.mjs'
-              - 'scripts/verify-toolchain-versions.sh'
-              - 'scripts/verify-vite-env-boundary.mjs'
-              - 'test/web-entry/**'
-              - 'Makefile'
-              - '.github/workflows/pr-frontend.yaml'
-
-  build-test:
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: server/.go-version
           cache-dependency-path: server/go.sum
-      - name: Verify toolchain versions
-        run: bash scripts/verify-toolchain-versions.sh
-      - name: Install dependencies
-        run: make bootstrap
-      - name: Test Web
-        run: make test
-      - name: Verify Vite environment boundary
-        run: make verify-vite-env
-      - name: Build Web assets
-        run: make build
-      - name: Build Go Web entry
-        run: make build-web-entry
-      - name: Test Web-entry contract
-        run: make test-web-entry-contract
-      - name: Install Chromium for Web-entry browser tests
-        run: pnpm exec playwright install --with-deps --only-shell chromium
-      - name: Test base-path and iframe browser contract
-        run: make test-web-entry-browser
-
-  lint:
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-      - name: Install dependencies
-        run: make bootstrap
-      - name: Lint Web-entry tooling and Web
-        run: make lint
-
-  # Single required status check: green only if the source-language guard and
-  # every frontend job passed (or there were no frontend-relevant changes).
-  pr-frontend-required:
-    runs-on: ubuntu-latest
-    needs:
-      - changes
-      - build-test
-      - lint
-    if: always()
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-      - name: Verify source language
-        run: node scripts/verify-source-language.mjs
-      - name: Aggregate frontend check results
+      - run: make bootstrap
+      - run: node test/web-entry/diagnose-picker.mjs
+      - run: make build build-web-entry
+      - run: pnpm exec playwright install --with-deps --only-shell chromium
+      - name: Isolated original assertion with lifecycle trace
+        continue-on-error: true
         run: |
-          if [[ "${{ needs.changes.result }}" != "success" ]]; then
-            echo "Frontend change detection did not complete successfully: ${{ needs.changes.result }}"
-            exit 1
-          fi
-          if [[ "${{ needs.changes.outputs.frontend }}" != "true" ]]; then
-            echo "No frontend-relevant changes; skipping."
-            exit 0
-          fi
-          for result in \
-            "${{ needs.build-test.result }}" \
-            "${{ needs.lint.result }}"; do
-            if [[ "${result}" != "success" ]]; then
-              echo "Frontend checks did not complete successfully: ${result}"
-              exit 1
-            fi
-          done
-          echo "All frontend checks passed."
+          mkdir -p evidence
+          node --test --test-concurrency=1 --test-name-pattern='custom trend drafts survive' test/web-entry/web-entry.browser.test.mjs 2>&1 | tee evidence/targeted.log
+      - name: Second original assertion with entry trace
+        continue-on-error: true
+        run: node --test --test-concurrency=1 --test-name-pattern='custom trend drafts survive' test/web-entry/web-entry.browser.test.mjs 2>&1 | tee evidence/targeted-second.log
+      - name: Third original assertion with entry trace
+        continue-on-error: true
+        run: node --test --test-concurrency=1 --test-name-pattern='custom trend drafts survive' test/web-entry/web-entry.browser.test.mjs 2>&1 | tee evidence/targeted-third.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: pr328-calendar-lifecycle
+          path: evidence/

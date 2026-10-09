@@ -2855,6 +2855,21 @@ test('custom trend drafts survive resizing and narrow calendars keep confirmatio
   const target = await startWebEntry({ frameAncestors: undefined })
   const page = await browser.newPage({ locale: 'en-US', viewport: { width: 1440, height: 900 }, timezoneId: 'UTC' })
   await page.clock.install({ time: new Date('2026-10-07T12:00:00Z') })
+  await page.addInitScript(() => {
+    window.__pickerTrace = []
+    const record = (event, extra) => window.__pickerTrace.push({ event, now: performance.now(), ...extra })
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+    Object.defineProperty(HTMLInputElement.prototype, 'value', { ...descriptor, set(value) {
+      if (this.closest('.trend-time-filter')) record('dom-value-set', { value, old: descriptor.get.call(this) })
+      descriptor.set.call(this, value)
+    } })
+    for (const event of ['input', 'focusin', 'focusout', 'scroll']) {
+      document.addEventListener(event, (e) => {
+        if (e.target.closest?.('.trend-time-filter, .trend-time-filter-popup')) record(event, { value: e.target.value, target: e.target.className, scrollTop: e.target.scrollTop })
+      }, true)
+    }
+    window.addEventListener('resize', () => record('resize', { width: innerWidth, height: innerHeight }))
+  })
   const requests = trackTrendRequests(page)
   try {
     await page.goto(`${target}${deepRoute}`, { waitUntil: 'networkidle' })
@@ -2939,6 +2954,7 @@ test('custom trend drafts survive resizing and narrow calendars keep confirmatio
     await waitUntil(() => requests.length === 15, 'Confirming a wheel edit must fetch exactly once')
     assert.equal(requests.at(-1).range.end, (await localRangeAsUTC(page, [afterWheel]))[0])
   } finally {
+    console.log('PICKER_ENTRY_TRACE', JSON.stringify(await page.evaluate(() => window.__pickerTrace)))
     await page.close()
   }
 })
